@@ -1,0 +1,25 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/dfm/cron/daily",
+      "schedule": "30 13 * * *"
+    },
+    {
+      "path": "/api/dfm/cron/daily",
+      "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/dfm/cron/new-ae-check",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/dfm/cron/new-ae-check",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/dfm/cron/clickup-delivery",
+      "schedule": "* * * * *"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "name": "deal-flow-matcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node --import tsx scripts/smoke.ts",
+    "live-test": "node --import tsx scripts/live-test.ts",
+    "readiness": "node --import tsx scripts/readiness.ts",
+    "backfill-theses": "node --import tsx scripts/backfill-theses.ts",
+    "recover-daily": "node --import tsx scripts/recover-daily.ts",
+    "recover-daily-chunked": "node --import tsx scripts/recover-daily-chunked.ts",
+    "sync-clickup-destinations": "node --import tsx scripts/sync-clickup-destinations.ts",
+    "manage-delivery-thresholds": "node --import tsx scripts/manage-delivery-thresholds.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "next": "^15.5.2",
+    "nodemailer": "^6.10.1",
+    "pg": "^8.21.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/nodemailer": "^6.4.17",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.1.12",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

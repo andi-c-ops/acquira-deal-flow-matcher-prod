@@ -1,0 +1,46 @@
+{
+  "thesis": {
+    "aeName": "Jordan Example",
+    "aeEmail": "jordan@example.com",
+    "industries": ["Plumbing", "HVAC"],
+    "geography": ["Florida", "Tampa"],
+    "priceTarget": "1000000-3000000",
+    "ebitdaRange": "200000-700000"
+  },
+  "deals": [
+    {
+      "airtableRecordId": "rec_plumbing_1",
+      "title": "Tampa Plumbing Services",
+      "industry": null,
+      "location": "Tampa",
+      "state": "Florida",
+      "price": 1800000,
+      "ebitda": 350000,
+      "listingUrl": "https://example.com/deal-1",
+      "sourceCreatedAt": "2026-06-15T12:00:00.000Z",
+      "sourceUpdatedAt": "2026-06-15T12:00:00.000Z",
+      "rawPayload": {
+        "fields": {
+          "Title": "Tampa Plumbing Services"
+        }
+      }
+    },
+    {
+      "airtableRecordId": "rec_roofing_1",
+      "title": "Atlanta Roofing Co",
+      "industry": "Roofing",
+      "location": "Atlanta",
+      "state": "Georgia",
+      "price": 4200000,
+      "ebitda": 900000,
+      "listingUrl": "https://example.com/deal-2",
+      "sourceCreatedAt": "2026-06-15T12:00:00.000Z",
+      "sourceUpdatedAt": "2026-06-15T12:00:00.000Z",
+      "rawPayload": {
+        "fields": {
+          "Title": "Atlanta Roofing Co"
+        }
+      }
+    }
+  ]
+}
