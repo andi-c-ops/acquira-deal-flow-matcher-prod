@@ -48,7 +48,12 @@ export async function updateMatchRunStatus(
       where id = $1
       returning *
     `,
-    [runId, status, JSON.stringify(summaryJson ?? null), JSON.stringify(errorJson ?? null)],
+    [
+      runId,
+      status,
+      summaryJson === undefined ? null : JSON.stringify(summaryJson),
+      errorJson === undefined ? null : JSON.stringify(errorJson),
+    ],
   );
 }
 
@@ -81,7 +86,7 @@ export async function listStaleRunningDailyRuns(cutoffIso: string) {
         from dfm_private.match_runs
         where run_type = 'daily'
           and status = 'running'
-          and summary_json is null
+          and (summary_json is null or summary_json = 'null'::jsonb)
           and coalesce(started_at, created_at) < $1::timestamptz
         order by created_at asc
       ) t
