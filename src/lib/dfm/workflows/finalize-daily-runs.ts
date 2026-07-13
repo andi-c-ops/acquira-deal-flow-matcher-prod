@@ -156,6 +156,11 @@ export async function finalizeDailyRunsWorkflow(input: FinalizeDailyRunsInput = 
     const runId = String(partialRun.id);
     const runRecord = unwrapSupabaseResult(await getMatchRunById(runId));
     const summary = asObject(runRecord.summary_json);
+    const triggerPayload = asObject(runRecord.trigger_payload);
+    const suppressSummaryNotification =
+      summary.suppressSummaryNotification === true ||
+      triggerPayload.suppressSummaryNotification === true ||
+      triggerPayload.skipNotifications === true;
     const counts = toDeliveryCounts(
       unwrapSupabaseResult(await listDeliveryJobStatusCountsByRunId(runId)) as Array<{
         status: string;
@@ -244,7 +249,7 @@ export async function finalizeDailyRunsWorkflow(input: FinalizeDailyRunsInput = 
     unwrapSupabaseResult(await updateMatchRunStatus(runId, "succeeded", nextSummary));
     finalized += 1;
 
-    if (!input.skipNotifications) {
+    if (!input.skipNotifications && !suppressSummaryNotification) {
       try {
         await sendSummaryNotification({
           summary: nextSummary,
