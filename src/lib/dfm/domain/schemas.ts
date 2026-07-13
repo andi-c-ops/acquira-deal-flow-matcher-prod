@@ -21,6 +21,8 @@ export const backlogRecoverySchema = z.object({
   force: z.boolean().optional(),
   skipNotifications: z.boolean().optional(),
   windowSeconds: z.number().int().positive().max(300).optional(),
+  probeWindowSeconds: z.number().int().positive().max(86_400).optional(),
+  maxDealsPerRun: z.number().int().positive().max(25).optional(),
   overlapMs: z.number().int().nonnegative().max(60_000).optional(),
   minLagSeconds: z.number().int().nonnegative().max(86_400).optional(),
   maxCursorEndOverride: z.string().datetime().nullable().optional(),

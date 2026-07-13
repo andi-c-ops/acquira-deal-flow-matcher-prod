@@ -56,12 +56,12 @@ How it works:
 4. It finalizes any completed partial daily runs first.
 5. If any daily run is still open, it exits and waits for the next cron.
 6. It reads the `airtable_daily_deals` cursor from Supabase.
-7. It processes a small overlapped Airtable window, defaulting to 10 seconds.
+7. It probes ahead for Airtable deals, skips empty windows, and shrinks dense windows to a safe size.
 8. It creates deferred ClickUp delivery jobs.
 9. The existing `clickup-delivery` cron drains those jobs.
 10. The existing finalizer advances the Airtable cursor only after delivery succeeds.
 
-To put it another way, backlog recovery turns a huge catch-up run into many small safe runs that Vercel can complete one at a time.
+To put it another way, backlog recovery turns a huge catch-up run into many small safe runs that Vercel can complete one at a time, while skipping quiet gaps quickly.
 
 Enable only during catch-up:
 
@@ -78,6 +78,8 @@ Manual signed POST options:
   "force": true,
   "skipNotifications": true,
   "windowSeconds": 10,
+  "probeWindowSeconds": 86400,
+  "maxDealsPerRun": 6,
   "overlapMs": 1000,
   "minLagSeconds": 900
 }
@@ -88,6 +90,7 @@ Safety notes:
 - Recovery skips if another daily run is queued, running, or partial.
 - Recovery sends no summary email by default.
 - Recovery replays a 1-second overlap to avoid missing records at cursor boundaries.
+- Recovery can advance the cursor across empty Airtable windows because there are no ClickUp deliveries to protect in those windows.
 - ClickUp dedupe keys prevent duplicate tasks when the overlap sees an already-delivered deal.
 - The cursor still advances only after ClickUp delivery is complete.
 

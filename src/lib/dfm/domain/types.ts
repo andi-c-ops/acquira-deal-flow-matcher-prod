@@ -62,6 +62,8 @@ export interface RunBacklogRecoveryInput {
   force?: boolean;
   skipNotifications?: boolean;
   windowSeconds?: number;
+  probeWindowSeconds?: number;
+  maxDealsPerRun?: number;
   overlapMs?: number;
   minLagSeconds?: number;
   maxCursorEndOverride?: string | null;

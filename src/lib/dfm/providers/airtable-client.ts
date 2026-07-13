@@ -22,6 +22,10 @@ export interface FetchDealsInput {
   cursorEnd: string;
 }
 
+export interface CountDealsInput extends FetchDealsInput {
+  stopAfter?: number;
+}
+
 interface AirtableListResponse {
   records?: Array<{
     id: string;
@@ -119,4 +123,52 @@ export async function fetchDealsInWindow(input: FetchDealsInput): Promise<Airtab
   } while (offset);
 
   return records;
+}
+
+export async function countDealsInWindow(input: CountDealsInput): Promise<number> {
+  const env = getEnv();
+  let count = 0;
+  let offset: string | undefined;
+  const stopAfter = input.stopAfter ?? Number.POSITIVE_INFINITY;
+
+  do {
+    const url = new URL(
+      `https://api.airtable.com/v0/${env.AIRTABLE_BASE_ID}/${encodeURIComponent(env.AIRTABLE_TABLE_ID)}`,
+    );
+    url.searchParams.set("pageSize", "100");
+    url.searchParams.append("fields[]", "Title");
+    if (env.AIRTABLE_VIEW_ID) {
+      url.searchParams.set("view", env.AIRTABLE_VIEW_ID);
+    }
+    url.searchParams.set(
+      "filterByFormula",
+      `AND(IS_AFTER(CREATED_TIME(), '${input.cursorStart}'), IS_BEFORE(CREATED_TIME(), '${input.cursorEnd}'))`,
+    );
+    if (offset) {
+      url.searchParams.set("offset", offset);
+    }
+
+    const response = await fetchWithTimeout(
+      url,
+      {
+        headers: {
+          Authorization: `Bearer ${env.AIRTABLE_API_KEY}`,
+        },
+      },
+      20_000,
+    );
+
+    if (!response.ok) {
+      throw new Error(`Airtable count failed with status ${response.status}`);
+    }
+
+    const data = (await response.json()) as AirtableListResponse;
+    count += data.records?.length ?? 0;
+    if (count >= stopAfter) {
+      return count;
+    }
+    offset = data.offset;
+  } while (offset);
+
+  return count;
 }
