@@ -57,6 +57,16 @@ export interface ProcessClickupJobsInput {
   skipNotifications?: boolean;
 }
 
+export interface RunBacklogRecoveryInput {
+  dryRun?: boolean;
+  force?: boolean;
+  skipNotifications?: boolean;
+  windowSeconds?: number;
+  overlapMs?: number;
+  minLagSeconds?: number;
+  maxCursorEndOverride?: string | null;
+}
+
 export interface NormalizedAeThesis {
   aeName: string;
   aeEmail?: string | null;

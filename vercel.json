@@ -20,6 +20,10 @@
     {
       "path": "/api/dfm/cron/clickup-delivery",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/dfm/cron/backlog-recovery",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

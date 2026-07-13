@@ -16,6 +16,16 @@ export const clickupWorkerSchema = z.object({
   skipNotifications: z.boolean().optional(),
 });
 
+export const backlogRecoverySchema = z.object({
+  dryRun: z.boolean().optional(),
+  force: z.boolean().optional(),
+  skipNotifications: z.boolean().optional(),
+  windowSeconds: z.number().int().positive().max(300).optional(),
+  overlapMs: z.number().int().nonnegative().max(60_000).optional(),
+  minLagSeconds: z.number().int().nonnegative().max(86_400).optional(),
+  maxCursorEndOverride: z.string().datetime().nullable().optional(),
+});
+
 export const newAeCheckSchema = z.object({
   dryRun: z.boolean().optional(),
   force: z.boolean().optional(),
