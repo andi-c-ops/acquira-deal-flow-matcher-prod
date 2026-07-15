@@ -1,5 +1,6 @@
 import {
   getDeliveryJobIntegrityByRunId,
+  listDeliveredMatchRowsByRunId,
   listDeliveryJobStatusCountsByRunId,
 } from "@/lib/dfm/db/repositories/delivery-jobs";
 import {
@@ -22,6 +23,13 @@ type FinalizeDailyRunsInput = {
 };
 
 type DeliveryCounts = Record<string, number>;
+type CriteriaDetail = {
+  criterion: string;
+  match: boolean;
+  score: number;
+  dealValue: string;
+  thesisValue: string;
+};
 
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -43,6 +51,132 @@ function toNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function readIsoTimestamp(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+
+  if (value && typeof value === "object" && "toISOString" in value) {
+    const candidate = value as { toISOString?: () => string };
+    if (typeof candidate.toISOString === "function") {
+      return candidate.toISOString();
+    }
+  }
+
+  return null;
+}
+
+function readSummaryCursor(summary: Record<string, unknown>, run: Record<string, unknown>, key: string) {
+  const summaryValue = summary[key];
+  if (typeof summaryValue === "string" && summaryValue.length > 0) {
+    return summaryValue;
+  }
+
+  const runKey = key === "cursorStart" ? "cursor_start" : "cursor_end";
+  return readIsoTimestamp(run[runKey]);
+}
+
+function normalizeCriteriaDetails(value: unknown): CriteriaDetail[] {
+  const candidate = asObject(value);
+  const details = Array.isArray(candidate.criteria) ? candidate.criteria : Array.isArray(value) ? value : [];
+
+  return details
+    .map((detail) => asObject(detail))
+    .map((detail) => ({
+      criterion: String(detail.criterion ?? ""),
+      match: detail.match === true,
+      score: toNumber(detail.score),
+      dealValue: String(detail.dealValue ?? ""),
+      thesisValue: String(detail.thesisValue ?? ""),
+    }))
+    .filter((detail) => detail.criterion.length > 0);
+}
+
+async function buildSummaryFromDeliveredJobs(
+  runId: string,
+  run: Record<string, unknown>,
+  existingSummary: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const deliveredRows = unwrapSupabaseResult(await listDeliveredMatchRowsByRunId(runId)) as Array<
+    Record<string, unknown>
+  >;
+  const aeReports = new Map<
+    string,
+    {
+      aeName: string;
+      aeEmail?: string | null;
+      clickupListId?: string | null;
+      deliveryMinMatchQuality?: string;
+      strongMatches: number;
+      moderateMatches: number;
+      totalMatched: number;
+      matches: Array<Record<string, unknown>>;
+    }
+  >();
+  const dealIds = new Set<string>();
+
+  for (const row of deliveredRows) {
+    const aeId = String(row.ae_thesis_id);
+    const matchQuality = typeof row.match_quality === "string" ? row.match_quality : "Moderate";
+    const report = aeReports.get(aeId) ?? {
+      aeName: String(row.ae_name ?? "Unknown AE"),
+      aeEmail: typeof row.ae_email === "string" ? row.ae_email : null,
+      clickupListId: typeof row.clickup_list_id === "string" ? row.clickup_list_id : null,
+      deliveryMinMatchQuality:
+        typeof row.delivery_min_match_quality === "string" ? row.delivery_min_match_quality : "Moderate",
+      strongMatches: 0,
+      moderateMatches: 0,
+      totalMatched: 0,
+      matches: [],
+    };
+
+    if (matchQuality === "Strong") {
+      report.strongMatches += 1;
+    } else if (matchQuality === "Moderate") {
+      report.moderateMatches += 1;
+    }
+    report.totalMatched += 1;
+    report.matches.push({
+      dealName: String(row.business_name ?? "Untitled Deal"),
+      matchQuality,
+      scorePct: toNumber(row.score_pct),
+      location: typeof row.location === "string" ? row.location : null,
+      state: typeof row.state === "string" ? row.state : null,
+      price: row.price == null ? null : toNumber(row.price),
+      ebitda: row.ebitda == null ? null : toNumber(row.ebitda),
+      multiple: row.multiple == null ? null : toNumber(row.multiple),
+      listingUrl: typeof row.listing_url === "string" ? row.listing_url : null,
+      criteriaDetails: normalizeCriteriaDetails(row.criteria_details),
+    });
+    aeReports.set(aeId, report);
+
+    if (row.deal_id) {
+      dealIds.add(String(row.deal_id));
+    }
+  }
+
+  const reports = Array.from(aeReports.values()).sort((a, b) => b.totalMatched - a.totalMatched);
+  return {
+    ...existingSummary,
+    mode: typeof existingSummary.mode === "string" ? existingSummary.mode : "daily",
+    cursorStart: readSummaryCursor(existingSummary, run, "cursorStart"),
+    cursorEnd: readSummaryCursor(existingSummary, run, "cursorEnd"),
+    fetchedDeals: toNumber(existingSummary.fetchedDeals ?? dealIds.size),
+    generatedAt:
+      typeof existingSummary.generatedAt === "string"
+        ? existingSummary.generatedAt
+        : new Date().toISOString(),
+    totalStrongMatches: reports.reduce((sum, ae) => sum + ae.strongMatches, 0),
+    totalModerateMatches: reports.reduce((sum, ae) => sum + ae.moderateMatches, 0),
+    aesWithMatches: reports.filter((ae) => ae.totalMatched > 0).length,
+    aeReports: reports,
+  };
+}
+
 function staleCutoffIso(input: FinalizeDailyRunsInput) {
   const cutoffMs = input.staleRunningCutoffMs ?? 6 * 60 * 60 * 1000;
   return new Date(Date.now() - cutoffMs).toISOString();
@@ -60,9 +194,12 @@ async function recoverStaleRunningDailyRuns(input: FinalizeDailyRunsInput) {
 
   let recovered = 0;
   let stillUnsafe = 0;
+  let resumedAsPartial = 0;
 
   for (const staleRun of staleRuns) {
     const runId = String(staleRun.id);
+    const existingSummary = asObject(staleRun.summary_json);
+    const cursorEnd = readSummaryCursor(existingSummary, staleRun, "cursorEnd");
     const integrity = unwrapSupabaseResult(await getDeliveryJobIntegrityByRunId(runId)) as Record<
       string,
       unknown
@@ -71,6 +208,65 @@ async function recoverStaleRunningDailyRuns(input: FinalizeDailyRunsInput) {
     const receipts = toNumber(integrity.receipts);
     const distinctTaskIds = toNumber(integrity.distinct_task_ids);
     const nonSent = toNumber(integrity.non_sent);
+    const recoveredAt = new Date().toISOString();
+    const baseSummary = await buildSummaryFromDeliveredJobs(runId, staleRun, existingSummary);
+    const summary: Record<string, unknown> = {
+      ...baseSummary,
+      recoveryState: "stale_running_recovered",
+      recoveredAt,
+      originalStartedAt: staleRun.started_at ?? null,
+      originalCreatedAt: staleRun.created_at ?? null,
+      clickupDelivery: {
+        mode: "stale_running_integrity_check",
+        jobs,
+        receipts,
+        distinctTaskIds,
+        nonSent,
+      },
+    };
+
+    if (jobs > 0 && cursorEnd && nonSent > 0) {
+      unwrapSupabaseResult(await updateMatchRunStatus(runId, "partial", summary));
+      resumedAsPartial += 1;
+      logInfo("Stale daily run recovered as partial for worker drain", {
+        runId,
+        jobs,
+        receipts,
+        distinctTaskIds,
+        nonSent,
+      });
+      continue;
+    }
+
+    if (jobs > 0 && cursorEnd && receipts === jobs && receipts === distinctTaskIds && nonSent === 0) {
+      await advanceSyncCursorTimestampMonotonic("airtable_daily_deals", {
+        cursorTimestamp: cursorEnd,
+        metadata: {
+          lastRunId: runId,
+          fetchedDeals: summary.fetchedDeals ?? null,
+          finalizedAt: recoveredAt,
+          recoveredFrom: "stale_running",
+        },
+      });
+
+      unwrapSupabaseResult(await updateMatchRunStatus(runId, "succeeded", summary));
+      recovered += 1;
+
+      if (!input.skipNotifications) {
+        try {
+          await sendSummaryNotification({
+            summary,
+          });
+        } catch (notificationError) {
+          logError("Failed to send stale daily recovery summary notification", {
+            runId,
+            notificationError:
+              notificationError instanceof Error ? notificationError.message : String(notificationError),
+          });
+        }
+      }
+      continue;
+    }
 
     if (nonSent > 0 || receipts !== jobs || receipts !== distinctTaskIds) {
       stillUnsafe += 1;
@@ -84,19 +280,9 @@ async function recoverStaleRunningDailyRuns(input: FinalizeDailyRunsInput) {
       continue;
     }
 
-    const recoveredAt = new Date().toISOString();
-    const summary = {
-      mode: "stale_running_recovery",
+    const failedSummary = {
+      ...summary,
       recoveredAt,
-      originalStartedAt: staleRun.started_at ?? null,
-      originalCreatedAt: staleRun.created_at ?? null,
-      clickupDelivery: {
-        mode: "stale_running_integrity_check",
-        jobs,
-        receipts,
-        distinctTaskIds,
-        nonSent,
-      },
       cursorPolicy:
         "Cursor was not advanced. The next daily run must restart from the last successful cursor and rely on delivery dedupe.",
     };
@@ -104,7 +290,7 @@ async function recoverStaleRunningDailyRuns(input: FinalizeDailyRunsInput) {
       "Daily run became stale while running and had no summary cursor. Marked failed without advancing cursor so the next run can safely replay from the last successful cursor.";
 
     unwrapSupabaseResult(
-      await updateMatchRunStatus(runId, "failed", summary, {
+      await updateMatchRunStatus(runId, "failed", failedSummary, {
         message,
       }),
     );
@@ -117,7 +303,7 @@ async function recoverStaleRunningDailyRuns(input: FinalizeDailyRunsInput) {
           runId,
           message,
           context: {
-            summary,
+            summary: failedSummary,
           },
         });
       } catch (notificationError) {
@@ -133,6 +319,7 @@ async function recoverStaleRunningDailyRuns(input: FinalizeDailyRunsInput) {
   return {
     recovered,
     stillUnsafe,
+    resumedAsPartial,
     staleRunsSeen: staleRuns.length,
   };
 }
@@ -155,7 +342,7 @@ export async function finalizeDailyRunsWorkflow(input: FinalizeDailyRunsInput = 
   for (const partialRun of partialRuns) {
     const runId = String(partialRun.id);
     const runRecord = unwrapSupabaseResult(await getMatchRunById(runId));
-    const summary = asObject(runRecord.summary_json);
+    const summary = await buildSummaryFromDeliveredJobs(runId, runRecord, asObject(runRecord.summary_json));
     const triggerPayload = asObject(runRecord.trigger_payload);
     const suppressSummaryNotification =
       summary.suppressSummaryNotification === true ||

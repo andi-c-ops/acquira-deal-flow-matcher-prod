@@ -24,11 +24,26 @@ export async function insertDeliveryJob(input: InsertDeliveryJobInput) {
       values ($1, $2, $3, $4, $5, $6)
       on conflict (dedupe_key)
       do update set
-        run_id = excluded.run_id,
-        ae_thesis_id = excluded.ae_thesis_id,
-        deal_id = excluded.deal_id,
-        match_candidate_id = excluded.match_candidate_id,
-        clickup_list_id = excluded.clickup_list_id,
+        run_id = case
+          when dfm_private.clickup_delivery_jobs.sent_at is not null then dfm_private.clickup_delivery_jobs.run_id
+          else excluded.run_id
+        end,
+        ae_thesis_id = case
+          when dfm_private.clickup_delivery_jobs.sent_at is not null then dfm_private.clickup_delivery_jobs.ae_thesis_id
+          else excluded.ae_thesis_id
+        end,
+        deal_id = case
+          when dfm_private.clickup_delivery_jobs.sent_at is not null then dfm_private.clickup_delivery_jobs.deal_id
+          else excluded.deal_id
+        end,
+        match_candidate_id = case
+          when dfm_private.clickup_delivery_jobs.sent_at is not null then dfm_private.clickup_delivery_jobs.match_candidate_id
+          else excluded.match_candidate_id
+        end,
+        clickup_list_id = case
+          when dfm_private.clickup_delivery_jobs.sent_at is not null then dfm_private.clickup_delivery_jobs.clickup_list_id
+          else excluded.clickup_list_id
+        end,
         status = case
           when dfm_private.clickup_delivery_jobs.sent_at is not null then dfm_private.clickup_delivery_jobs.status
           else 'pending'::dfm_private.job_status
@@ -127,6 +142,38 @@ export async function getDeliveryJobIntegrityByRunId(runId: string) {
       from dfm_private.clickup_delivery_jobs j
       left join dfm_private.clickup_delivery_receipts r on r.job_id = j.id
       where j.run_id = $1
+    `,
+    [runId],
+  );
+}
+
+export async function listDeliveredMatchRowsByRunId(runId: string) {
+  return queryMany(
+    `
+      select
+        ae.id as ae_thesis_id,
+        ae.ae_name,
+        ae.ae_email,
+        ae.clickup_list_id,
+        ae.delivery_min_match_quality,
+        d.id as deal_id,
+        d.business_name,
+        d.location,
+        d.state,
+        d.price,
+        d.ebitda,
+        d.multiple,
+        d.listing_url,
+        c.score_pct,
+        c.match_quality,
+        c.criteria_details
+      from dfm_private.clickup_delivery_jobs j
+      join dfm_public.ae_theses ae on ae.id = j.ae_thesis_id
+      join dfm_public.deals_normalized d on d.id = j.deal_id
+      left join dfm_private.match_candidates c on c.id = j.match_candidate_id
+      where j.run_id = $1
+        and j.status = 'sent'
+      order by ae.ae_name asc, c.score_pct desc nulls last, d.business_name asc
     `,
     [runId],
   );

@@ -57,6 +57,33 @@ export async function updateMatchRunStatus(
   );
 }
 
+export async function updateMatchRunCursorWindow(
+  runId: string,
+  input: {
+    cursorStart: string;
+    cursorEnd: string;
+    summaryJson?: Record<string, unknown>;
+  },
+) {
+  return queryOne(
+    `
+      update dfm_private.match_runs
+      set
+        cursor_start = $2::timestamptz,
+        cursor_end = $3::timestamptz,
+        summary_json = coalesce($4::jsonb, summary_json)
+      where id = $1
+      returning *
+    `,
+    [
+      runId,
+      input.cursorStart,
+      input.cursorEnd,
+      input.summaryJson === undefined ? null : JSON.stringify(input.summaryJson),
+    ],
+  );
+}
+
 export async function getMatchRunById(runId: string) {
   return queryOne(`select * from dfm_private.match_runs where id = $1`, [runId]);
 }
@@ -86,7 +113,6 @@ export async function listStaleRunningDailyRuns(cutoffIso: string) {
         from dfm_private.match_runs
         where run_type = 'daily'
           and status = 'running'
-          and (summary_json is null or summary_json = 'null'::jsonb)
           and coalesce(started_at, created_at) < $1::timestamptz
         order by created_at asc
       ) t

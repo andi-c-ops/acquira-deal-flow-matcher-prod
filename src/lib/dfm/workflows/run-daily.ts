@@ -7,6 +7,7 @@ import { insertRawDealSnapshot, upsertNormalizedDeal } from "@/lib/dfm/db/reposi
 import {
   createMatchRun,
   listOpenDailyRuns,
+  updateMatchRunCursorWindow,
   updateMatchRunStatus,
 } from "@/lib/dfm/db/repositories/match-runs";
 import {
@@ -113,6 +114,22 @@ export async function runDailyWorkflow(input: RunDailyInput): Promise<BaseRunRes
       existingCursor?.cursor_timestamp ??
       toIsoString(hoursAgo(24));
     const cursorEnd = input.cursorEndOverride ?? toIsoString(new Date());
+    const recoverableStartedSummary = {
+      mode: "daily",
+      dryRun: input.dryRun ?? false,
+      cursorStart,
+      cursorEnd,
+      generatedAt: new Date().toISOString(),
+      recoveryState: "started_before_matching",
+    };
+
+    unwrapSupabaseResult(
+      await updateMatchRunCursorWindow(runId, {
+        cursorStart,
+        cursorEnd,
+        summaryJson: recoverableStartedSummary,
+      }),
+    );
 
     const deals = await fetchDealsInWindow({
       cursorStart,
