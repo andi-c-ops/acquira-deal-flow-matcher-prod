@@ -1,6 +1,6 @@
 import type { NormalizedAeThesis } from "@/lib/dfm/domain/types";
 
-const NORMALIZATION_VERSION = "v1";
+const NORMALIZATION_VERSION = "v2";
 
 function toStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -33,12 +33,27 @@ function parseRange(value: unknown): { min?: number; max?: number } {
     return {};
   }
 
-  const numbers = value.match(/\d+(?:\.\d+)?/g);
-  if (!numbers || numbers.length === 0) {
+  const matches = Array.from(value.matchAll(/(\d+(?:\.\d+)?)\s*([kKmM])?/g));
+  if (matches.length === 0) {
     return {};
   }
 
-  const parsed = numbers.map(Number);
+  const hasMillionSuffix = matches.some((match) => match[2]?.toLowerCase() === "m");
+  const hasThousandSuffix = matches.some((match) => match[2]?.toLowerCase() === "k");
+  const inferredSuffix = hasMillionSuffix ? "m" : hasThousandSuffix ? "k" : null;
+  const parsed = matches.map((match) => {
+    const numericValue = Number(match[1]);
+    const suffix = match[2]?.toLowerCase() ?? inferredSuffix;
+
+    if (suffix === "m") {
+      return numericValue * 1_000_000;
+    }
+    if (suffix === "k") {
+      return numericValue * 1_000;
+    }
+    return numericValue;
+  });
+
   if (parsed.length === 1) {
     return { min: parsed[0], max: parsed[0] };
   }

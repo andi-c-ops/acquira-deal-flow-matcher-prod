@@ -22,6 +22,17 @@ async function main() {
   const input = JSON.parse(raw) as SmokeInput;
 
   const thesis = normalizeAePayload(input.thesis);
+  const suffixRangeThesis = normalizeAePayload({
+    aeName: "Range Parser Smoke",
+    "What is the desired asking price for the business you’re interested in?": "$2.5-5M",
+  });
+
+  if (suffixRangeThesis.priceMin !== 2_500_000 || suffixRangeThesis.priceMax !== 5_000_000) {
+    throw new Error(
+      `Expected $2.5-5M to parse as 2500000 to 5000000, received ${suffixRangeThesis.priceMin} to ${suffixRangeThesis.priceMax}`,
+    );
+  }
+
   console.log(`AE: ${thesis.aeName}`);
   console.log(`Summary: ${thesis.summary}`);
 
