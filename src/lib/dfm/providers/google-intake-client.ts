@@ -25,12 +25,20 @@ function buildSubmissionKey(payload: Record<string, unknown>, submittedAt: strin
   const name =
     typeof payload["Your Full Name"] === "string"
       ? payload["Your Full Name"]
+      : typeof payload["Your Full Name:"] === "string"
+        ? payload["Your Full Name:"]
+        : typeof payload["Your Full Name:  "] === "string"
+          ? payload["Your Full Name:  "]
       : typeof payload.aeName === "string"
         ? payload.aeName
         : "unknown";
   const email =
     typeof payload["Your Email"] === "string"
       ? payload["Your Email"]
+      : typeof payload["Your Email:"] === "string"
+        ? payload["Your Email:"]
+        : typeof payload["Email Address"] === "string"
+          ? payload["Email Address"]
       : typeof payload.aeEmail === "string"
         ? payload.aeEmail
         : "unknown";
