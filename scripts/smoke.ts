@@ -26,11 +26,18 @@ async function main() {
     aeName: "Range Parser Smoke",
     "What is the desired asking price for the business you’re interested in?": "$2.5-5M",
   });
+  const colonHeaderThesis = normalizeAePayload({
+    "Your Full Name:": "Kyle Sausser",
+    "Your Email:": "kylesausser@example.com",
+  });
 
   if (suffixRangeThesis.priceMin !== 2_500_000 || suffixRangeThesis.priceMax !== 5_000_000) {
     throw new Error(
       `Expected $2.5-5M to parse as 2500000 to 5000000, received ${suffixRangeThesis.priceMin} to ${suffixRangeThesis.priceMax}`,
     );
+  }
+  if (colonHeaderThesis.aeName !== "Kyle Sausser") {
+    throw new Error(`Expected colon header name to parse as Kyle Sausser, received ${colonHeaderThesis.aeName}`);
   }
 
   console.log(`AE: ${thesis.aeName}`);

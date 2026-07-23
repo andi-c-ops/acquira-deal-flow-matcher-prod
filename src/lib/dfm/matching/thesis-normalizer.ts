@@ -70,6 +70,7 @@ export function normalizeAePayload(payload: Record<string, unknown>): Normalized
       payload.aeName,
       payload.ae_name,
       payload["Your Full Name"],
+      payload["Your Full Name:"],
       payload["Your Full Name:  "],
     ) ?? "Unknown AE";
 
