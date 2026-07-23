@@ -2,7 +2,6 @@ import type { BaseRunResult, RunNewAeBackfillInput } from "@/lib/dfm/domain/type
 import { clearCurrentAeThesisVersions, insertAeThesisVersion } from "@/lib/dfm/db/repositories/ae-thesis-versions";
 import { updateAeLatestVersion, upsertAeThesis } from "@/lib/dfm/db/repositories/ae-theses";
 import { upsertMatchCandidate } from "@/lib/dfm/db/repositories/match-candidates";
-import { insertDeliveryJob } from "@/lib/dfm/db/repositories/delivery-jobs";
 import { listActiveNormalizedDeals } from "@/lib/dfm/db/repositories/deals";
 import { createMatchRun, updateMatchRunStatus } from "@/lib/dfm/db/repositories/match-runs";
 import { shouldCreateClickupDeliveryJob } from "@/lib/dfm/matching/delivery-threshold";
@@ -10,7 +9,6 @@ import { scoreDealAgainstThesis } from "@/lib/dfm/matching/scorer";
 import { normalizeAePayload } from "@/lib/dfm/matching/thesis-normalizer";
 import { logError, logInfo } from "@/lib/dfm/observability/logger";
 import { sendErrorNotification } from "@/lib/dfm/providers/notification-client";
-import { buildClickupDedupeKey } from "@/lib/dfm/utils/idempotency";
 import { unwrapSupabaseResult } from "@/lib/dfm/utils/supabase";
 
 export async function runNewAeBackfillWorkflow(
@@ -57,6 +55,7 @@ export async function runNewAeBackfillWorkflow(
     const activeDeals = unwrapSupabaseResult(await listActiveNormalizedDeals());
     let candidatesCreatedOrUpdated = 0;
     let deliveryJobsCreatedOrEligible = 0;
+    let deliveryJobsCreated = 0;
 
     for (const deal of activeDeals) {
       const score = scoreDealAgainstThesis(
@@ -92,23 +91,11 @@ export async function runNewAeBackfillWorkflow(
       );
       candidatesCreatedOrUpdated += 1;
 
-      const qualityAllowedForDelivery =
+      const qualityAllowedForFutureDailyDelivery =
         score.deliveryEligible &&
         shouldCreateClickupDeliveryJob(score.matchQuality, aeRecord.delivery_min_match_quality);
 
-      if (qualityAllowedForDelivery && aeRecord.clickup_list_id) {
-        unwrapSupabaseResult(
-          await insertDeliveryJob({
-            runId,
-            aeThesisId,
-            dealId: String(deal.id),
-            matchCandidateId: String(candidate.id),
-            clickupListId: String(aeRecord.clickup_list_id),
-            dedupeKey: buildClickupDedupeKey(aeThesisId, String(deal.id)),
-          }),
-        );
-        deliveryJobsCreatedOrEligible += 1;
-      } else if (qualityAllowedForDelivery) {
+      if (qualityAllowedForFutureDailyDelivery) {
         deliveryJobsCreatedOrEligible += 1;
       }
     }
@@ -123,6 +110,8 @@ export async function runNewAeBackfillWorkflow(
       activeDealsEvaluated: activeDeals.length,
       candidatesCreatedOrUpdated,
       deliveryJobsCreatedOrEligible,
+      deliveryJobsCreated,
+      deliveryPolicy: "new_thesis_prepares_candidates_only_daily_run_delivers",
     };
     unwrapSupabaseResult(await updateMatchRunStatus(runId, "succeeded", summary));
 

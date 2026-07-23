@@ -103,11 +103,13 @@ export async function updateDeliveryJobStatus(
 export async function listPendingDeliveryJobs(limit: number) {
   return queryMany(
     `
-      select *
-      from dfm_private.clickup_delivery_jobs
-      where status in ('pending', 'retry_scheduled')
-        and next_attempt_at <= now()
-      order by created_at asc
+      select jobs.*
+      from dfm_private.clickup_delivery_jobs jobs
+      join dfm_private.match_runs runs on runs.id = jobs.run_id
+      where jobs.status in ('pending', 'retry_scheduled')
+        and jobs.next_attempt_at <= now()
+        and runs.run_type = 'daily'
+      order by jobs.created_at asc
       limit $1
     `,
     [limit],

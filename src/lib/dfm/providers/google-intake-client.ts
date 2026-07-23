@@ -9,6 +9,27 @@ export interface GoogleSubmissionRecord {
   payload: Record<string, unknown>;
 }
 
+export interface GoogleSubmissionFetchDiagnostics {
+  sheetConfigured: boolean;
+  sheetIdConfigured: boolean;
+  range: string | null;
+  rawRowsRead: number;
+  dataRowsRead: number;
+  parsedRows: number;
+  rowsAfterCursor: number;
+  headerCount: number;
+  headersPresent: string[];
+  timestampHeaderPresent: boolean;
+  firstParsedTimestamp: string | null;
+  lastParsedTimestamp: string | null;
+  cursorTimestamp: string | null;
+}
+
+export interface GoogleSubmissionFetchResult {
+  submissions: GoogleSubmissionRecord[];
+  diagnostics: GoogleSubmissionFetchDiagnostics;
+}
+
 interface GoogleSheetValuesResponse {
   values?: string[][];
 }
@@ -46,12 +67,38 @@ function buildSubmissionKey(payload: Record<string, unknown>, submittedAt: strin
 }
 
 export async function fetchNewAeSubmissionsSince(cursorTimestamp?: string | null) {
+  const result = await fetchNewAeSubmissionWindow(cursorTimestamp);
+  return result.submissions;
+}
+
+export async function fetchNewAeSubmissionWindow(
+  cursorTimestamp?: string | null,
+): Promise<GoogleSubmissionFetchResult> {
   const env = getEnv();
+  const range = env.GOOGLE_SHEET_RANGE ?? "Form Responses 1";
+  const baseDiagnostics: GoogleSubmissionFetchDiagnostics = {
+    sheetConfigured: Boolean(env.GOOGLE_SHEET_ID),
+    sheetIdConfigured: Boolean(env.GOOGLE_SHEET_ID),
+    range: env.GOOGLE_SHEET_ID ? range : null,
+    rawRowsRead: 0,
+    dataRowsRead: 0,
+    parsedRows: 0,
+    rowsAfterCursor: 0,
+    headerCount: 0,
+    headersPresent: [],
+    timestampHeaderPresent: false,
+    firstParsedTimestamp: null,
+    lastParsedTimestamp: null,
+    cursorTimestamp: cursorTimestamp ?? null,
+  };
+
   if (!env.GOOGLE_SHEET_ID) {
-    return [] as GoogleSubmissionRecord[];
+    return {
+      submissions: [],
+      diagnostics: baseDiagnostics,
+    };
   }
 
-  const range = env.GOOGLE_SHEET_RANGE ?? "Form Responses 1";
   const url = new URL(
     `https://sheets.googleapis.com/v4/spreadsheets/${env.GOOGLE_SHEET_ID}/values/${encodeURIComponent(range)}`,
   );
@@ -70,8 +117,7 @@ export async function fetchNewAeSubmissionsSince(cursorTimestamp?: string | null
 
   const data = (await response.json()) as GoogleSheetValuesResponse;
   const [sheetHeaders = [], ...rows] = data.values ?? [];
-
-  return rows
+  const parsedRows = rows
     .map((row) => {
       const payload = rowToPayload(sheetHeaders, row);
       const rawSubmittedAt =
@@ -89,6 +135,23 @@ export async function fetchNewAeSubmissionsSince(cursorTimestamp?: string | null
       };
     })
     .filter((row) => row.submittedAt !== "")
-    .filter((row) => !cursorTimestamp || row.submittedAt > cursorTimestamp)
     .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
+
+  const submissions = parsedRows.filter((row) => !cursorTimestamp || row.submittedAt > cursorTimestamp);
+
+  return {
+    submissions,
+    diagnostics: {
+      ...baseDiagnostics,
+      rawRowsRead: data.values?.length ?? 0,
+      dataRowsRead: rows.length,
+      parsedRows: parsedRows.length,
+      rowsAfterCursor: submissions.length,
+      headerCount: sheetHeaders.length,
+      headersPresent: sheetHeaders.slice(0, 12),
+      timestampHeaderPresent: sheetHeaders.some((header) => header === "Timestamp" || header === "timestamp"),
+      firstParsedTimestamp: parsedRows[0]?.submittedAt ?? null,
+      lastParsedTimestamp: parsedRows.at(-1)?.submittedAt ?? null,
+    },
+  };
 }

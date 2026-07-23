@@ -3,7 +3,7 @@ import { createMatchRun, updateMatchRunStatus } from "@/lib/dfm/db/repositories/
 import { getSyncCursor, upsertSyncCursor } from "@/lib/dfm/db/repositories/sync-cursors";
 import { logError, logInfo } from "@/lib/dfm/observability/logger";
 import { sendErrorNotification } from "@/lib/dfm/providers/notification-client";
-import { fetchNewAeSubmissionsSince } from "@/lib/dfm/providers/google-intake-client";
+import { fetchNewAeSubmissionWindow } from "@/lib/dfm/providers/google-intake-client";
 import { hoursAgo, toIsoString } from "@/lib/dfm/utils/dates";
 import { runNewAeBackfillWorkflow } from "@/lib/dfm/workflows/run-new-ae-backfill";
 import { unwrapSupabaseResult } from "@/lib/dfm/utils/supabase";
@@ -31,19 +31,24 @@ export async function runNewAeCheckWorkflow(input: RunNewAeCheckInput): Promise<
 
     const cursor = cursorResult.data;
     const lookbackStart = cursor?.cursor_timestamp ?? toIsoString(hoursAgo(24));
-    const submissions = await fetchNewAeSubmissionsSince(lookbackStart);
+    const submissionWindow = await fetchNewAeSubmissionWindow(lookbackStart);
+    const submissions = submissionWindow.submissions;
     let processed = 0;
     let latestTimestamp = cursor?.cursor_timestamp ?? null;
 
-    for (const submission of submissions) {
-      await runNewAeBackfillWorkflow({
-        source: "google_sheets_daily_check",
-        submissionKey: submission.submissionKey,
-        submittedAt: submission.submittedAt,
-        payload: submission.payload,
-      });
-      processed += 1;
-      latestTimestamp = submission.submittedAt;
+    if (!input.dryRun) {
+      for (const submission of submissions) {
+        await runNewAeBackfillWorkflow({
+          source: "google_sheets_daily_check",
+          submissionKey: submission.submissionKey,
+          submittedAt: submission.submittedAt,
+          payload: submission.payload,
+        });
+        processed += 1;
+        latestTimestamp = submission.submittedAt;
+      }
+    } else {
+      latestTimestamp = submissions.at(-1)?.submittedAt ?? latestTimestamp;
     }
 
     if (!input.dryRun && latestTimestamp) {
@@ -62,8 +67,10 @@ export async function runNewAeCheckWorkflow(input: RunNewAeCheckInput): Promise<
       mode: "new_ae_daily_check",
       dryRun: input.dryRun ?? false,
       lookbackStart,
+      sheetDiagnostics: submissionWindow.diagnostics,
       submissionsFound: submissions.length,
       submissionsProcessed: processed,
+      submissionsWouldProcess: input.dryRun ? submissions.length : undefined,
       lastSubmissionTimestamp: latestTimestamp,
     };
     unwrapSupabaseResult(await updateMatchRunStatus(runId, "succeeded", summary));
