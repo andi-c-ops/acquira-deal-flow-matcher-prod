@@ -4,7 +4,9 @@ import { verifyCronRequest } from "@/lib/dfm/auth/verify-cron";
 import { backlogRecoverySchema } from "@/lib/dfm/domain/schemas";
 import { runBacklogRecoveryWorkflow } from "@/lib/dfm/workflows/run-backlog-recovery";
 
-export const maxDuration = 60;
+// Recovery runs should have enough time to finalize stale runs and safely
+// drain a bounded recovery chunk without being cut off mid-cleanup.
+export const maxDuration = 300;
 
 async function handleRequest(request: Request, fallbackBody: Record<string, unknown>) {
   if (!verifyCronRequest(request)) {

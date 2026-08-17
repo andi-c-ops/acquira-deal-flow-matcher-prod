@@ -7,7 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test:unit": "node --import tsx --test tests/unit/**/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "operator-packet": "node --import tsx scripts/build-operator-agent-packet.ts",
     "smoke": "node --import tsx scripts/smoke.ts",
     "live-test": "node --import tsx scripts/live-test.ts",
     "readiness": "node --import tsx scripts/readiness.ts",
@@ -15,7 +17,8 @@
     "recover-daily": "node --import tsx scripts/recover-daily.ts",
     "recover-daily-chunked": "node --import tsx scripts/recover-daily-chunked.ts",
     "sync-clickup-destinations": "node --import tsx scripts/sync-clickup-destinations.ts",
-    "manage-delivery-thresholds": "node --import tsx scripts/manage-delivery-thresholds.ts"
+    "manage-delivery-thresholds": "node --import tsx scripts/manage-delivery-thresholds.ts",
+    "authorize-google-drive": "node --import tsx scripts/authorize-google-drive.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

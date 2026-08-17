@@ -1,5 +1,21 @@
 # How Deal Flow Matcher Operates
 
+## Current Operator Start Point
+
+Before using this repo runbook as your main entrypoint, start with the current CompanyOS operator runbook:
+
+- [Deal Flow Matcher Current Operator Runbook](</Users/andicunanan/Documents/CompanyOS/empowerlabs-ccworkspace/Companies/Acquira/WIP/Processes/Deal Flow Matcher/deal-flow-matcher-current-operator-runbook-2026-08-04.md>)
+
+Use that file first when you need:
+
+- the fastest workflow overview
+- the current system map
+- the morning schedule
+- the main debugging order
+- the most important files, scripts, and config references
+
+Use this repo document after that when you want the code-oriented runtime flow.
+
 ## Purpose
 
 Deal Flow Matcher is a standalone Acquira service that:
@@ -11,6 +27,51 @@ Deal Flow Matcher is a standalone Acquira service that:
 5. delivers matched deals to AE ClickUp lists
 
 It runs without depending on Acquira CRM runtime.
+
+## Current Subagent Boundary
+
+The Deal Flow Matcher subagent should be treated as a daily deal-delivery and weekly deal-flow review system.
+
+It owns:
+
+- daily Airtable intake
+- thesis matching
+- ClickUp deal delivery
+- cursor-safe workflow state
+- weekly AE deal-flow review
+- recent ClickUp deal-task activity as a deal-work signal inside that weekly review
+
+It does not own:
+
+- Stripe payment confirmation
+- welcome and receipt emails
+- Thinkific training progress as a direct system signal
+- full AE engagement status
+- Gmail or Slack as primary engagement truth
+- full lifecycle intervention orchestration
+
+## Operator Packet and Agent Read Model
+
+The protected operator packet is the read-only production source for the Operator, QA, Engineering, and AE Deal Flow Agents.
+
+It includes:
+
+- latest scheduled run state
+- safe Airtable and Google cursor state
+- delivery-queue totals
+- report state derived from the latest daily run
+- weekly AE coverage and a timestamped recent ClickUp Deals-list activity snapshot
+- 90-day stale-deal counts and samples based on Deal Flow Matcher delivery records
+
+It deliberately does not wait for any live ClickUp inventory scan before returning. The separate ClickUp engagement snapshot runs every six hours and stores only the 14-day and 30-day Deals-list activity signals in the private Google Drive JSON file `dfm-clickup-engagement-snapshot.json`. It labels activity as unavailable when that file is missing or stale. This keeps the weekly AE review usable without pretending that missing activity data means an AE is inactive.
+
+To put it another way, the packet is designed to answer the operational question quickly. A full historical ClickUp cleanup audit is a separate, heavier review and must not block daily monitoring or the weekly AE review.
+
+The current durable scope record is:
+
+- [Deal Flow Matcher Subagent Scope](</Users/andicunanan/Documents/CompanyOS/empowerlabs-ccworkspace/Companies/Acquira/WIP/Processes/Deal Flow Matcher/deal-flow-matcher-subagent-scope-2026-08-14.md>)
+
+To put it another way, this repo runbook explains how the service works, while the scope document explains where this subagent should stop so it does not silently become the broader Acquira Delivery Agent.
 
 ## Managed Services Split
 

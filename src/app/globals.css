@@ -1,0 +1,55 @@
+@import url("https://fonts.googleapis.com/css2?family=Onest:wght@300;400;700;900&display=swap");
+
+:root {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #1e293b;
+  --heading: #0f172a;
+  --muted: #475569;
+  --subtle: #64748b;
+  --line: rgba(148, 163, 184, 0.28);
+  --accent: #2563eb;
+  --accent-soft: rgba(78, 164, 211, 0.14);
+  --teal: #4ea4d3;
+  --teal-soft: rgba(127, 220, 243, 0.18);
+  --indigo: #4f46e5;
+  --navy: #020617;
+  --warn: #b45309;
+  --warn-soft: rgba(245, 158, 11, 0.14);
+  --danger: #be123c;
+  --danger-soft: rgba(244, 63, 94, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background:
+    radial-gradient(circle at 18% 10%, rgba(78, 164, 211, 0.18) 0, rgba(78, 164, 211, 0) 24rem),
+    radial-gradient(circle at 82% 0%, rgba(79, 70, 229, 0.16) 0, rgba(79, 70, 229, 0) 26rem),
+    linear-gradient(180deg, #f8fafc 0%, #eef5fb 100%);
+  color: var(--ink);
+  font-family: Onest, system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.35;
+  mask-image: linear-gradient(180deg, rgba(0,0,0,0.55), transparent 85%);
+}

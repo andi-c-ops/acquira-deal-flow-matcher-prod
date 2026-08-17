@@ -92,6 +92,10 @@ async function getAccessTokenFromFile(tokenFilePath: string): Promise<string> {
 async function getAccessTokenFromSource(options: {
   tokenFilePath?: string;
   tokenInlineJson?: string;
+}, clientOptions?: {
+  clientFilePath?: string;
+  clientInlineJson?: string;
+  label?: string;
 }): Promise<string> {
   const tokenFile = await readJsonSource<OAuthTokenFile>({
     filePath: options.tokenFilePath,
@@ -107,16 +111,18 @@ async function getAccessTokenFromSource(options: {
   }
 
   const env = getEnv();
-  if (!refreshToken || (!env.GOOGLE_OAUTH_CLIENT_FILE && !env.GOOGLE_OAUTH_CLIENT_JSON)) {
+  const clientFilePath = clientOptions?.clientFilePath ?? env.GOOGLE_OAUTH_CLIENT_FILE;
+  const clientInlineJson = clientOptions?.clientInlineJson ?? env.GOOGLE_OAUTH_CLIENT_JSON;
+  if (!refreshToken || (!clientFilePath && !clientInlineJson)) {
     throw new Error(
       "Google OAuth refresh requires a refresh token and either GOOGLE_OAUTH_CLIENT_FILE or GOOGLE_OAUTH_CLIENT_JSON",
     );
   }
 
   const clientFile = await readJsonSource<OAuthClientFile>({
-    filePath: env.GOOGLE_OAUTH_CLIENT_FILE,
-    inlineJson: env.GOOGLE_OAUTH_CLIENT_JSON,
-    label: "GOOGLE_OAUTH_CLIENT source",
+    filePath: clientFilePath,
+    inlineJson: clientInlineJson,
+    label: clientOptions?.label ?? "GOOGLE_OAUTH_CLIENT source",
   });
   const clientId = clientFile.installed?.client_id;
   const clientSecret = clientFile.installed?.client_secret;
@@ -152,5 +158,22 @@ export async function getGoogleSheetsAccessToken(): Promise<string> {
   return getAccessTokenFromSource({
     tokenFilePath: env.GOOGLE_SHEETS_TOKEN_FILE,
     tokenInlineJson: env.GOOGLE_SHEETS_TOKEN_JSON,
+  });
+}
+
+export async function getGoogleDriveAccessToken(): Promise<string> {
+  const env = getEnv();
+  if (!env.GOOGLE_DRIVE_TOKEN_FILE && !env.GOOGLE_DRIVE_TOKEN_JSON) {
+    throw new Error(
+      "Either GOOGLE_DRIVE_TOKEN_FILE or GOOGLE_DRIVE_TOKEN_JSON must be configured",
+    );
+  }
+  return getAccessTokenFromSource({
+    tokenFilePath: env.GOOGLE_DRIVE_TOKEN_FILE,
+    tokenInlineJson: env.GOOGLE_DRIVE_TOKEN_JSON,
+  }, {
+    clientFilePath: env.GOOGLE_DRIVE_OAUTH_CLIENT_FILE,
+    clientInlineJson: env.GOOGLE_DRIVE_OAUTH_CLIENT_JSON,
+    label: "GOOGLE_DRIVE_OAUTH_CLIENT source",
   });
 }

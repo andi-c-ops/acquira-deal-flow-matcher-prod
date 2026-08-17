@@ -2,6 +2,25 @@
 
 Standalone Acquira service for matching Airtable deals against AE theses and delivering matched deals into ClickUp.
 
+## Documentation Start Here
+
+If you are opening this repo to understand, support, or troubleshoot the workflow, use this reading order:
+
+1. [Current operator runbook](</Users/andicunanan/Documents/CompanyOS/empowerlabs-ccworkspace/Companies/Acquira/WIP/Processes/Deal Flow Matcher/deal-flow-matcher-current-operator-runbook-2026-08-04.md>)
+2. [How Deal Flow Matcher Operates](</Users/andicunanan/Documents/CompanyOS/empowerlabs-ccworkspace/tmp/Acquira/Acquira Deal Flow Matcher/Repo/docs/runbooks/how-it-operates.md>)
+3. [Production Ops](</Users/andicunanan/Documents/CompanyOS/empowerlabs-ccworkspace/tmp/Acquira/Acquira Deal Flow Matcher/Repo/docs/runbooks/production-ops.md>)
+4. [Stale Deal Review Policy](</Users/andicunanan/Documents/CompanyOS/empowerlabs-ccworkspace/tmp/Acquira/Acquira Deal Flow Matcher/Repo/docs/runbooks/stale-deal-review.md>)
+
+Use the operator runbook first when you need:
+
+- the fastest workflow overview
+- the current schedule
+- the source-of-truth map
+- the debugging order
+- the most important files, scripts, and config references
+
+Use the repo runbooks after that when you need code-level or production-specific detail.
+
 ## Status
 
 Working standalone service with Airtable intake, Google Sheets thesis intake, ClickUp delivery, and Gmail notification wiring. A real-data live matching and report-email test has been run locally. The unattended runtime path is Vercel for execution plus managed Postgres for durable workflow state.

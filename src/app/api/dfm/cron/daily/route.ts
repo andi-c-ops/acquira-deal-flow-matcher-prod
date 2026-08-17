@@ -5,7 +5,10 @@ import { dailyRunSchema } from "@/lib/dfm/domain/schemas";
 import { describeEasternNow, isScheduledEasternTime } from "@/lib/dfm/utils/eastern-time";
 import { runDailyWorkflow } from "@/lib/dfm/workflows/run-daily";
 
-export const maxDuration = 60;
+// The daily matcher can legitimately take longer than a default short
+// serverless window when Airtable volume spikes, so give the cron route
+// enough headroom to finish and update run state cleanly.
+export const maxDuration = 300;
 
 async function handleRequest(request: Request, fallbackBody: Record<string, unknown>, isCronGet: boolean) {
   if (!verifyCronRequest(request)) {

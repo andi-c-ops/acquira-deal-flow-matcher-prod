@@ -22,6 +22,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/dfm/cron/clickup-engagement-snapshot",
+      "schedule": "15 */6 * * *"
+    },
+    {
       "path": "/api/dfm/cron/backlog-recovery",
       "schedule": "*/5 * * * *"
     }

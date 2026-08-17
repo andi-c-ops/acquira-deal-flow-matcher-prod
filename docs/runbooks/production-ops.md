@@ -1,5 +1,22 @@
 # Production Ops
 
+## Current Operator Start Point
+
+Before using this repo production note as the main workflow guide, start with:
+
+- [Deal Flow Matcher Current Operator Runbook](</Users/andicunanan/Documents/CompanyOS/empowerlabs-ccworkspace/Companies/Acquira/WIP/Processes/Deal Flow Matcher/deal-flow-matcher-current-operator-runbook-2026-08-04.md>)
+
+That runbook is the current operator-facing starting point for:
+
+- workflow purpose
+- schedule and runtime flow
+- source-of-truth map
+- debugging order
+- key runtime files
+- config and script references
+
+Use this repo document for production-specific deployment and runtime notes after the operator runbook.
+
 This service is production-backed by Vercel, Supabase, Airtable, ClickUp, Google Sheets, and Gmail/Gmail OAuth.
 
 ## Source Control and Deployment
@@ -35,6 +52,7 @@ In other words, GitHub is now the source of truth for code, and Vercel should re
 - `daily`: 9:30 AM Eastern year-round via dual UTC cron entries and route gating
 - `new-ae-check`: 7:00 AM Eastern year-round via dual UTC cron entries and route gating
 - `clickup-delivery`: minute-level ClickUp delivery worker
+- `clickup-engagement-snapshot`: every six hours, refreshes the private Google Drive JSON used only for AE Deal Flow Agent ClickUp activity signals
 - `backlog-recovery`: every 5 minutes, but inactive unless `DFM_BACKLOG_RECOVERY_ENABLED=true`
 - `reconcile`: removed from the normal runtime path
 
@@ -99,6 +117,8 @@ Safety notes:
 - The Airtable cursor advances only after required ClickUp delivery succeeds.
 - ClickUp delivery uses idempotent dedupe keys and receipts to avoid duplicate tasks.
 - Failed daily runs should send an error email and leave the cursor unchanged.
+- There is no automatic 90-day untouched-deal deletion in ClickUp or Airtable.
+- Any stale-deal cleanup should begin as a read-only review or archive proposal, not a delete action.
 - Per-AE delivery thresholds live in `dfm_public.ae_theses.delivery_min_match_quality`.
 - `Moderate` is the default threshold, which sends Strong and Moderate matches.
 - `Strong` sends only Strong matches for that AE.
@@ -108,3 +128,27 @@ Current Strong-only exception:
 | AE | Rule |
 |---|---|
 | Nephtalie pierre | Send only Strong matches to ClickUp |
+
+## Google Drive Engagement Snapshot
+
+The weekly AE Deal Flow Agent reads a small Google Drive JSON file for recent ClickUp Deals-list activity. This is monitoring data only. It does not participate in daily matching, ClickUp delivery, job dedupe, receipts, run logs, or Airtable cursor advancement.
+
+Required Vercel production environment variables:
+
+- `GOOGLE_DRIVE_SNAPSHOT_FOLDER_ID`: `1TKz24roAajp-pqgDFxMq6SARGSt1CWuL`
+- `GOOGLE_DRIVE_TOKEN_JSON`: OAuth token JSON with the `https://www.googleapis.com/auth/drive.file` scope
+- `GOOGLE_DRIVE_OAUTH_CLIENT_JSON`: the matching installed OAuth client JSON used to refresh that Drive token
+
+The scheduled snapshot creates and then updates a private file named `dfm-clickup-engagement-snapshot.json` in the configured folder. The operator packet limits its Drive read to five seconds. If the file, credential, or Drive API is unavailable, the packet remains available and labels ClickUp engagement as unknown. It must never infer inactivity from a missing snapshot.
+
+One-time authorization:
+
+1. Use a Google OAuth client configured as an installed application with `http://localhost:8787` available as its local callback.
+2. Run `npm run authorize-google-drive` with `GOOGLE_OAUTH_CLIENT_FILE` pointing to that client JSON and `GOOGLE_DRIVE_TOKEN_OUTPUT_FILE` pointing to a private file under the CompanyOS `config` folder.
+3. Open the printed Google authorization link while signed in to the Acquira Google account that owns the snapshot folder.
+4. Approve only the Google Drive `drive.file` permission.
+5. Save the generated token JSON in 1Password, then add it to Vercel as `GOOGLE_DRIVE_TOKEN_JSON`.
+
+Do not commit the generated token file or paste its contents into chat, documentation, or source control.
+
+To put it another way, Google Drive stores only a small weekly-review aid. Supabase remains the authoritative persistence layer for the core daily Deal Flow Matcher workflow.
