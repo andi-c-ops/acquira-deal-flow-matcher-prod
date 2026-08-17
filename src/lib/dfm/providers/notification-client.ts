@@ -386,8 +386,57 @@ function buildDailySubject(summary: Record<string, unknown>) {
   );
   const strong = Number(summary.totalStrongMatches ?? 0);
   const moderate = Number(summary.totalModerateMatches ?? 0);
-  const aes = Number(summary.aesWithMatches ?? 0);
-  return `Deal Flow Report | ${dateLabel} | ${strong} strong, ${moderate} moderate (${aes} AEs)`;
+  return `Deal Flow Daily | ${dateLabel} | ${strong} Strong, ${moderate} Moderate`;
+}
+
+const CONTROL_ROOM_URL = "https://acquira-deal-flow-control-room.andicunanan2024.chatgpt.site";
+
+function buildCompactDailyHtml(summary: Record<string, unknown>) {
+  const generatedAt =
+    typeof summary.generatedAt === "string" ? summary.generatedAt : new Date().toISOString();
+  const dealsProcessed = Number(summary.fetchedDeals ?? 0);
+  const strong = Number(summary.totalStrongMatches ?? 0);
+  const moderate = Number(summary.totalModerateMatches ?? 0);
+  const aesWithMatches = Number(summary.aesWithMatches ?? 0);
+
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"></head>
+<body style="margin:0;background:#f8fafc;color:#1e293b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;line-height:1.5;">
+  <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
+    <div style="background:#020617;padding:22px 24px;border-bottom:3px solid #4ea4d3;">
+      <div style="color:#ffffff;font-size:20px;font-weight:700;">Deal Flow Daily</div>
+      <div style="color:#7fdcf3;font-size:13px;margin-top:4px;">${escapeHtml(formatReportMetaDateTime(generatedAt))}</div>
+    </div>
+    <div style="padding:24px;">
+      <p style="margin:0 0 18px;color:#475569;">The daily matching run completed. Use the Control Room for AE detail, coverage review, and agent prompts.</p>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
+        <td style="width:25%;padding:12px 8px;background:#eff6ff;text-align:center;border-radius:10px;"><strong style="display:block;font-size:22px;color:#2563eb;">${dealsProcessed}</strong><span style="font-size:11px;color:#475569;">Deals Processed</span></td>
+        <td style="width:4%;"></td>
+        <td style="width:22%;padding:12px 8px;background:#ecfdf5;text-align:center;border-radius:10px;"><strong style="display:block;font-size:22px;color:#15803d;">${strong}</strong><span style="font-size:11px;color:#475569;">Strong</span></td>
+        <td style="width:4%;"></td>
+        <td style="width:22%;padding:12px 8px;background:#fffbeb;text-align:center;border-radius:10px;"><strong style="display:block;font-size:22px;color:#b45309;">${moderate}</strong><span style="font-size:11px;color:#475569;">Moderate</span></td>
+        <td style="width:4%;"></td>
+        <td style="width:22%;padding:12px 8px;background:#eef2ff;text-align:center;border-radius:10px;"><strong style="display:block;font-size:22px;color:#4f46e5;">${aesWithMatches}</strong><span style="font-size:11px;color:#475569;">AEs Matched</span></td>
+      </tr></table>
+      <a href="${CONTROL_ROOM_URL}" style="display:inline-block;margin-top:22px;background:#2563eb;color:#ffffff;padding:12px 16px;border-radius:10px;text-decoration:none;font-size:14px;font-weight:700;">Open Deal Flow Control Room</a>
+    </div>
+  </div>
+</body></html>`;
+}
+
+function buildCompactDailyText(summary: Record<string, unknown>) {
+  const generatedAt =
+    typeof summary.generatedAt === "string" ? summary.generatedAt : new Date().toISOString();
+  return [
+    "Deal Flow Daily",
+    formatReportMetaDateTime(generatedAt),
+    `Deals processed: ${Number(summary.fetchedDeals ?? 0)}`,
+    `Strong matches: ${Number(summary.totalStrongMatches ?? 0)}`,
+    `Moderate matches: ${Number(summary.totalModerateMatches ?? 0)}`,
+    `AEs matched: ${Number(summary.aesWithMatches ?? 0)}`,
+    "",
+    `Open the Control Room for full details: ${CONTROL_ROOM_URL}`,
+  ].join("\n");
 }
 
 function buildDailyHtml(summary: Record<string, unknown>) {
@@ -717,8 +766,8 @@ function buildErrorHtml(input: SendErrorNotificationInput) {
 export async function sendSummaryNotification(input: SendSummaryNotificationInput): Promise<void> {
   const env = getEnv();
   const subject = input.subject ?? buildDailySubject(input.summary);
-  const text = buildDailyText(input.summary);
-  const html = buildDailyHtml(input.summary);
+  const text = buildCompactDailyText(input.summary);
+  const html = buildCompactDailyHtml(input.summary);
 
   if (!env.GMAIL_SENDER || !env.NOTIFICATION_TO) {
     throw new Error("Missing Gmail notification recipients");
@@ -748,8 +797,8 @@ export async function sendSummaryNotification(input: SendSummaryNotificationInpu
 export function buildSummaryNotificationPreview(summary: Record<string, unknown>) {
   return {
     subject: buildDailySubject(summary),
-    text: buildDailyText(summary),
-    html: buildDailyHtml(summary),
+    text: buildCompactDailyText(summary),
+    html: buildCompactDailyHtml(summary),
   };
 }
 
