@@ -13,6 +13,7 @@ const envSchema = z.object({
   CLICKUP_TEAM_ID: z.string().optional(),
   CRON_SECRET: z.string().min(1).optional(),
   DFM_INTERNAL_SECRET: z.string().min(1).optional(),
+  DFM_DASHBOARD_READ_TOKEN: z.string().min(1).optional(),
   DFM_EVENT_SECRET: z.string().min(1).optional(),
   GOOGLE_SHEET_ID: z.string().optional(),
   GOOGLE_API_KEY: z.string().optional(),
