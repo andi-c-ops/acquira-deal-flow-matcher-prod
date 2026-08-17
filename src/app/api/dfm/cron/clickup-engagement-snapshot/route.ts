@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { verifyCronRequest } from "@/lib/dfm/auth/verify-cron";
+import { logError } from "@/lib/dfm/observability/logger";
 import { refreshClickupEngagementSnapshotWorkflow } from "@/lib/dfm/workflows/refresh-clickup-engagement-snapshot";
 
 // This isolated scan may take longer than an interactive agent request.
@@ -14,8 +15,10 @@ export async function GET(request: Request) {
   try {
     return NextResponse.json(await refreshClickupEngagementSnapshotWorkflow());
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError("ClickUp engagement snapshot refresh failed", { message });
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : String(error) },
+      { ok: false, error: message },
       { status: 500 },
     );
   }

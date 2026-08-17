@@ -1,6 +1,7 @@
 import { listActiveAeTheses } from "@/lib/dfm/db/repositories/ae-theses";
 import { saveClickupEngagementSnapshot } from "@/lib/dfm/providers/google-drive-engagement-snapshot";
 import { listLiveClickupEngagementTasks } from "@/lib/dfm/providers/clickup-stale-review";
+import { logInfo } from "@/lib/dfm/observability/logger";
 import { unwrapSupabaseResult } from "@/lib/dfm/utils/supabase";
 
 const DAY_MS = 86_400_000;
@@ -21,7 +22,15 @@ export async function refreshClickupEngagementSnapshotWorkflow() {
       clickupListId: String(ae.clickup_list_id),
     }));
 
+  logInfo("Starting ClickUp engagement snapshot refresh", {
+    activeAes: activeAes.length,
+    routedAes: routes.length,
+  });
+
   const tasks = await listLiveClickupEngagementTasks(routes, 30);
+  logInfo("ClickUp engagement snapshot tasks loaded", {
+    recentTasksObserved: tasks.length,
+  });
   const fourteenDaysAgo = Date.now() - 14 * DAY_MS;
   const tasksByList = new Map<string, typeof tasks>();
 
@@ -51,6 +60,12 @@ export async function refreshClickupEngagementSnapshotWorkflow() {
     version: 1,
     observedAt,
     rows: snapshotRows,
+  });
+
+  logInfo("ClickUp engagement snapshot saved", {
+    snapshotsSaved: snapshotRows.length,
+    snapshotFileCreated: saved.created,
+    observedAt,
   });
 
   return {
