@@ -18,7 +18,8 @@
     "recover-daily-chunked": "node --import tsx scripts/recover-daily-chunked.ts",
     "sync-clickup-destinations": "node --import tsx scripts/sync-clickup-destinations.ts",
     "manage-delivery-thresholds": "node --import tsx scripts/manage-delivery-thresholds.ts",
-    "authorize-google-drive": "node --import tsx scripts/authorize-google-drive.ts"
+    "authorize-google-drive": "node --import tsx scripts/authorize-google-drive.ts",
+    "authorize-gmail": "node --import tsx scripts/authorize-gmail.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
