@@ -48,6 +48,8 @@ const PAGE_SIZE = 100;
 const REQUEST_TIMEOUT_MS = 30_000;
 const LIST_BATCH_SIZE = 10;
 const MAX_RATE_LIMIT_RETRIES = 5;
+const MAX_ENGAGEMENT_PAGES_PER_BATCH = 3;
+const ENGAGEMENT_BATCH_DELAY_MS = 1_000;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -124,7 +126,11 @@ async function fetchFilteredTasksPage(input: {
     }
 
     if (response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
-      await sleep((attempt + 1) * 1_500);
+      const retryAfterSeconds = Number(response.headers.get("retry-after"));
+      const retryDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds * 1_000
+        : (attempt + 1) * 1_500;
+      await sleep(retryDelayMs);
       continue;
     }
 
@@ -222,54 +228,58 @@ export async function listLiveClickupEngagementTasks(
   const thresholdMs = Date.now() - updatedWithinDays * 86_400_000;
   const results: LiveClickupEngagementTask[] = [];
 
-  const batchTasks = await Promise.all(
-    chunk(uniqueRoutes, LIST_BATCH_SIZE).map(async (listBatch) => {
-      const listIds = listBatch.map((route) => route.clickupListId);
-      const batchResults: LiveClickupEngagementTask[] = [];
+  const batchTasks: LiveClickupEngagementTask[] = [];
+  const routeBatches = chunk(uniqueRoutes, LIST_BATCH_SIZE);
 
-      for (let page = 0; ; page += 1) {
-        const data = await fetchFilteredTasksPage({
-          listIds,
-          dateUpdatedGt: thresholdMs,
-          page,
+  // This is a monitoring scan, so it yields to the delivery worker instead of
+  // fanning out a large number of paginated ClickUp requests at once.
+  for (const [batchIndex, listBatch] of routeBatches.entries()) {
+    const listIds = listBatch.map((route) => route.clickupListId);
+
+    for (let page = 0; page < MAX_ENGAGEMENT_PAGES_PER_BATCH; page += 1) {
+      const data = await fetchFilteredTasksPage({
+        listIds,
+        dateUpdatedGt: thresholdMs,
+        page,
+      });
+      const tasks = data.tasks ?? [];
+
+      for (const task of tasks) {
+        const lastTouched =
+          parseClickupTimestamp(task.date_updated) ?? parseClickupTimestamp(task.date_created);
+        if (!lastTouched) {
+          continue;
+        }
+
+        const listId = task.list?.id;
+        const route = listId ? routeMap.get(listId) : null;
+
+        batchTasks.push({
+          aeName: route?.aeName ?? task.list?.name ?? "Unknown AE",
+          clickupListId: listId ?? route?.clickupListId ?? "unknown-list-id",
+          taskId: task.id ?? "unknown-task-id",
+          taskName: task.name ?? "Untitled task",
+          taskUrl:
+            typeof task.url === "string" && task.url.length > 0
+              ? task.url
+              : task.id
+                ? `https://app.clickup.com/t/${task.id}`
+                : null,
+          status: task.status?.status ?? null,
+          lastTouchedAt: lastTouched.toISOString(),
         });
-        const tasks = data.tasks ?? [];
-
-        for (const task of tasks) {
-          const lastTouched =
-            parseClickupTimestamp(task.date_updated) ?? parseClickupTimestamp(task.date_created);
-          if (!lastTouched) {
-            continue;
-          }
-
-          const listId = task.list?.id;
-          const route = listId ? routeMap.get(listId) : null;
-
-          batchResults.push({
-            aeName: route?.aeName ?? task.list?.name ?? "Unknown AE",
-            clickupListId: listId ?? route?.clickupListId ?? "unknown-list-id",
-            taskId: task.id ?? "unknown-task-id",
-            taskName: task.name ?? "Untitled task",
-            taskUrl:
-              typeof task.url === "string" && task.url.length > 0
-                ? task.url
-                : task.id
-                  ? `https://app.clickup.com/t/${task.id}`
-                  : null,
-            status: task.status?.status ?? null,
-            lastTouchedAt: lastTouched.toISOString(),
-          });
-        }
-
-        if (tasks.length < PAGE_SIZE) {
-          break;
-        }
       }
-      return batchResults;
-    }),
-  );
 
-  results.push(...batchTasks.flat());
+      if (tasks.length < PAGE_SIZE) {
+        break;
+      }
+    }
 
+    if (batchIndex < routeBatches.length - 1) {
+      await sleep(ENGAGEMENT_BATCH_DELAY_MS);
+    }
+  }
+
+  results.push(...batchTasks);
   return results;
 }
