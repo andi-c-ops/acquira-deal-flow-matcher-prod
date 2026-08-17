@@ -34,6 +34,33 @@ interface GoogleSheetValuesResponse {
   values?: string[][];
 }
 
+const GOOGLE_SHEETS_MAX_ATTEMPTS = 3;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableGoogleSheetsStatus(status: number) {
+  return status === 429 || status >= 500;
+}
+
+async function fetchGoogleSheetsWithRetry(url: URL, headers: Record<string, string>) {
+  let lastStatus: number | null = null;
+
+  for (let attempt = 1; attempt <= GOOGLE_SHEETS_MAX_ATTEMPTS; attempt += 1) {
+    const response = await fetchWithTimeout(url, { headers }, 20_000);
+    if (response.ok || !isRetryableGoogleSheetsStatus(response.status) || attempt === GOOGLE_SHEETS_MAX_ATTEMPTS) {
+      return response;
+    }
+
+    lastStatus = response.status;
+    // Bounded retries recover temporary Google availability errors without risking the cron timeout.
+    await sleep(500 * attempt);
+  }
+
+  throw new Error(`Google Sheets fetch failed after retry exhaustion${lastStatus ? ` with status ${lastStatus}` : ""}`);
+}
+
 function rowToPayload(headers: string[], row: string[]) {
   const payload: Record<string, unknown> = {};
   headers.forEach((header, index) => {
@@ -110,7 +137,7 @@ export async function fetchNewAeSubmissionWindow(
     requestHeaders.Authorization = `Bearer ${await getGoogleSheetsAccessToken()}`;
   }
 
-  const response = await fetchWithTimeout(url, { headers: requestHeaders }, 20_000);
+  const response = await fetchGoogleSheetsWithRetry(url, requestHeaders);
   if (!response.ok) {
     throw new Error(`Google Sheets fetch failed with status ${response.status}`);
   }
