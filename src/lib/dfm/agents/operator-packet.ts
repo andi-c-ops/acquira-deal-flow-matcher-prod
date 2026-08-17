@@ -9,6 +9,8 @@ type EmailStatus =
   | "unknown"
   | "not_sent_yet"
   | "not_sent_due_to_failure"
+  | "failed"
+  | "sent"
   | "sent_or_attempted";
 
 export type OperatorPacketRun = {
@@ -144,6 +146,7 @@ export type OperatorAgentPacket = {
     expected: boolean;
     status: EmailStatus;
     subjectLinePreview: string | null;
+    lastError: string | null;
   };
   referenceRules: {
     deliveryPath: "daily_run_only";
@@ -155,6 +158,14 @@ export type OperatorAgentPacket = {
 function toNumber(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
 }
 
 function readSummaryCount(summary: Record<string, unknown>, key: string) {
@@ -237,6 +248,29 @@ function deriveEmailState(daily: OperatorPacketRun | null) {
       expected: false,
       status: "unknown" as const,
       subjectLinePreview: null,
+      lastError: null,
+    };
+  }
+
+  const reportEmail = asObject(daily.summary.reportEmail);
+  const reportEmailStatus = typeof reportEmail.status === "string" ? reportEmail.status : null;
+  const reportEmailError = typeof reportEmail.error === "string" ? reportEmail.error : null;
+
+  if (reportEmailStatus === "sent") {
+    return {
+      expected: true,
+      status: "sent" as const,
+      subjectLinePreview: buildEmailSubjectPreview(daily),
+      lastError: null,
+    };
+  }
+
+  if (reportEmailStatus === "failed") {
+    return {
+      expected: true,
+      status: "failed" as const,
+      subjectLinePreview: buildEmailSubjectPreview(daily),
+      lastError: reportEmailError,
     };
   }
 
@@ -245,6 +279,7 @@ function deriveEmailState(daily: OperatorPacketRun | null) {
       expected: true,
       status: "sent_or_attempted" as const,
       subjectLinePreview: buildEmailSubjectPreview(daily),
+      lastError: null,
     };
   }
 
@@ -253,6 +288,7 @@ function deriveEmailState(daily: OperatorPacketRun | null) {
       expected: true,
       status: "not_sent_due_to_failure" as const,
       subjectLinePreview: buildEmailSubjectPreview(daily),
+      lastError: null,
     };
   }
 
@@ -260,6 +296,7 @@ function deriveEmailState(daily: OperatorPacketRun | null) {
     expected: true,
     status: "not_sent_yet" as const,
     subjectLinePreview: buildEmailSubjectPreview(daily),
+    lastError: null,
   };
 }
 

@@ -380,11 +380,26 @@ export async function runDailyWorkflow(input: RunDailyInput): Promise<BaseRunRes
         await sendSummaryNotification({
           summary,
         });
+        Object.assign(summary, {
+          reportEmail: {
+            status: "sent",
+            attemptedAt: new Date().toISOString(),
+          },
+        });
+        unwrapSupabaseResult(await updateMatchRunStatus(runId, "succeeded", summary));
       } catch (notificationError) {
+        const message = notificationError instanceof Error ? notificationError.message : String(notificationError);
+        Object.assign(summary, {
+          reportEmail: {
+            status: "failed",
+            attemptedAt: new Date().toISOString(),
+            error: message,
+          },
+        });
+        unwrapSupabaseResult(await updateMatchRunStatus(runId, "succeeded", summary));
         logError("Failed to send daily workflow summary notification", {
           runId,
-          notificationError:
-            notificationError instanceof Error ? notificationError.message : String(notificationError),
+          notificationError: message,
         });
       }
     }

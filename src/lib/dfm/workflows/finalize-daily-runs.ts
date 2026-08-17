@@ -441,11 +441,26 @@ export async function finalizeDailyRunsWorkflow(input: FinalizeDailyRunsInput = 
         await sendSummaryNotification({
           summary: nextSummary,
         });
+        Object.assign(nextSummary, {
+          reportEmail: {
+            status: "sent",
+            attemptedAt: new Date().toISOString(),
+          },
+        });
+        unwrapSupabaseResult(await updateMatchRunStatus(runId, "succeeded", nextSummary));
       } catch (notificationError) {
+        const message = notificationError instanceof Error ? notificationError.message : String(notificationError);
+        Object.assign(nextSummary, {
+          reportEmail: {
+            status: "failed",
+            attemptedAt: new Date().toISOString(),
+            error: message,
+          },
+        });
+        unwrapSupabaseResult(await updateMatchRunStatus(runId, "succeeded", nextSummary));
         logError("Failed to send deferred daily summary notification", {
           runId,
-          notificationError:
-            notificationError instanceof Error ? notificationError.message : String(notificationError),
+          notificationError: message,
         });
       }
     }

@@ -263,6 +263,70 @@ export default async function OperatorDashboardPage({
         </div>
       </section>
 
+      <section
+        style={{
+          ...toneClass(view.runControl.tone),
+          marginTop: "20px",
+          border: "1px solid",
+          borderRadius: "24px",
+          padding: "20px",
+          boxShadow: "0 14px 34px rgba(15, 23, 42, 0.05)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", flexWrap: "wrap", alignItems: "start" }}>
+          <div>
+            <p style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: "0.78rem", fontWeight: 700 }}>
+              Run Control
+            </p>
+            <h2 style={{ margin: "8px 0 8px", fontSize: "1.5rem", lineHeight: 1.05 }}>{view.runControl.label}</h2>
+            <p style={{ margin: 0, lineHeight: 1.55, maxWidth: "760px" }}>{view.runControl.detail}</p>
+          </div>
+          <a
+            href="/dfm/agents"
+            style={{
+              border: "1px solid currentColor",
+              borderRadius: "999px",
+              padding: "9px 13px",
+              fontWeight: 700,
+              fontSize: "0.9rem",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Open agents
+          </a>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gap: "10px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+            marginTop: "18px",
+          }}
+        >
+          {view.runControl.checks.map((check) => (
+            <article
+              key={check.label}
+              style={{
+                background: "rgba(255,255,255,0.78)",
+                border: "1px solid rgba(148, 163, 184, 0.24)",
+                borderRadius: "16px",
+                padding: "14px",
+                color: "var(--ink)",
+              }}
+            >
+              <p style={{ margin: 0, color: "var(--subtle)", fontSize: "0.76rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                {check.label}
+              </p>
+              <p style={{ margin: "8px 0 5px", color: toneClass(check.tone).color, fontSize: "1.1rem", fontWeight: 900 }}>
+                {check.value}
+              </p>
+              <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.85rem", lineHeight: 1.4 }}>{check.detail}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section style={{ marginTop: "20px", display: "grid", gap: "16px", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
         {view.metrics.map((metric) => (
           <article

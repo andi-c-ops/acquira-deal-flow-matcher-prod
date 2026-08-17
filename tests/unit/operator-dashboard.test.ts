@@ -102,6 +102,7 @@ test("buildOperatorDashboardViewModel includes stale-deal counts and samples", (
       expected: false,
       status: "unknown",
       subjectLinePreview: null,
+      lastError: null,
     },
     referenceRules: {
       deliveryPath: "daily_run_only",

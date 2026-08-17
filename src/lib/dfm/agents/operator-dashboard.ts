@@ -12,6 +12,17 @@ export type OperatorDashboardViewModel = {
       value: string;
     }>;
   };
+  runControl: {
+    label: string;
+    detail: string;
+    tone: AlertTone;
+    checks: Array<{
+      label: string;
+      value: string;
+      detail: string;
+      tone: AlertTone;
+    }>;
+  };
   alerts: Array<{
     title: string;
     detail: string;
@@ -137,8 +148,8 @@ function readLatestDeliveryMode(packet: OperatorAgentPacket) {
 }
 
 function buildStatusLabel(packet: OperatorAgentPacket) {
-  if (packet.deliveryState.failedTerminal > 0) {
-    return "Delivery error";
+  if (packet.emailState.status === "failed" || packet.deliveryState.failedTerminal > 0) {
+    return "Action needed";
   }
 
   if (!packet.cursorState.cursorAdvanceAllowed || packet.deliveryState.outstanding > 0) {
@@ -146,6 +157,88 @@ function buildStatusLabel(packet: OperatorAgentPacket) {
   }
 
   return "Healthy";
+}
+
+function emailLabel(packet: OperatorAgentPacket) {
+  if (packet.emailState.status === "sent") return "Sent";
+  if (packet.emailState.status === "failed") return "Failed";
+  if (packet.emailState.status === "sent_or_attempted") return "Unverified";
+  if (packet.emailState.status === "not_sent_due_to_failure") return "Blocked";
+  if (packet.emailState.status === "not_sent_yet") return "Pending";
+  return "Unknown";
+}
+
+function emailTone(packet: OperatorAgentPacket): AlertTone {
+  if (packet.emailState.status === "sent") return "good";
+  if (packet.emailState.status === "failed" || packet.emailState.status === "not_sent_due_to_failure") return "danger";
+  return "warning";
+}
+
+function runTone(status: string | undefined): AlertTone {
+  return status === "succeeded" ? "good" : status === "failed" || status === "cancelled" ? "danger" : "warning";
+}
+
+function buildRunControl(packet: OperatorAgentPacket): OperatorDashboardViewModel["runControl"] {
+  const emailFailed = packet.emailState.status === "failed";
+  const emailUnverified = packet.emailState.status === "sent_or_attempted" || packet.emailState.status === "unknown";
+  const runStatus = packet.latestRuns.daily?.status ?? "missing";
+  const runProblem = runStatus !== "succeeded";
+  const deliveryProblem = packet.deliveryState.failedTerminal > 0 || packet.deliveryState.outstanding > 0;
+  const cursorProblem = !packet.cursorState.cursorAdvanceAllowed;
+
+  const blocker = emailFailed
+    ? packet.emailState.lastError ?? "The daily report could not be sent."
+    : packet.deliveryState.failedTerminal > 0
+      ? `${packet.deliveryState.failedTerminal} ClickUp delivery job(s) failed.`
+    : packet.deliveryState.outstanding > 0
+        ? `${packet.deliveryState.outstanding} ClickUp delivery job(s) are still processing.`
+        : emailUnverified
+          ? "This historical run has no persisted report-email receipt, so email delivery cannot be confirmed."
+        : runProblem
+          ? "Today’s daily run has not completed successfully."
+          : cursorProblem
+            ? "The Airtable cursor is safely parked until the run can complete."
+            : "Today’s scheduled workflow completed with a clear delivery queue.";
+
+  return {
+    label: emailFailed || emailUnverified || runProblem || deliveryProblem || cursorProblem ? "Attention required" : "Today is complete",
+    detail: blocker,
+    tone: emailFailed || packet.deliveryState.failedTerminal > 0 ? "danger" : emailUnverified || runProblem || deliveryProblem || cursorProblem ? "warning" : "good",
+    checks: [
+      {
+        label: "9:30 AM daily run",
+        value: runStatus,
+        detail: packet.latestRuns.daily?.createdAt ? `Started ${formatTimestamp(packet.latestRuns.daily.createdAt)}` : "No daily run record is available.",
+        tone: runTone(runStatus),
+      },
+      {
+        label: "Report email",
+        value: emailLabel(packet),
+        detail: packet.emailState.lastError ?? packet.emailState.subjectLinePreview ?? "No report email has been recorded yet.",
+        tone: emailTone(packet),
+      },
+      {
+        label: "Airtable cursor",
+        value: packet.cursorState.cursorAdvanceAllowed ? "Safe" : "Parked",
+        detail: packet.cursorState.airtableDailyDeals?.cursorTimestamp
+          ? `Last safe cursor: ${formatTimestamp(packet.cursorState.airtableDailyDeals.cursorTimestamp)}`
+          : "No Airtable cursor is recorded.",
+        tone: packet.cursorState.cursorAdvanceAllowed ? "good" : "warning",
+      },
+      {
+        label: "ClickUp delivery",
+        value: packet.deliveryState.outstanding > 0 ? `${packet.deliveryState.outstanding} open` : "Clear",
+        detail: `${packet.deliveryState.sent} sent, ${packet.deliveryState.failedTerminal} terminal failure(s).`,
+        tone: packet.deliveryState.failedTerminal > 0 ? "danger" : packet.deliveryState.outstanding > 0 ? "warning" : "good",
+      },
+      {
+        label: "Next scheduled checks",
+        value: "7:00 AM and 9:30 AM ET",
+        detail: "New thesis check at 7:00 AM. Daily deal run at 9:30 AM.",
+        tone: "good",
+      },
+    ],
+  };
 }
 
 function buildAlerts(packet: OperatorAgentPacket) {
@@ -196,6 +289,18 @@ function buildAlerts(packet: OperatorAgentPacket) {
       title: "Report email was blocked by failure",
       detail: "The run did not end cleanly, so a normal daily report should not be treated as sent.",
       tone: "danger",
+    });
+  } else if (packet.emailState.status === "failed") {
+    alerts.push({
+      title: "Report email failed",
+      detail: packet.emailState.lastError ?? "The daily run completed, but the report email could not be sent.",
+      tone: "danger",
+    });
+  } else if (packet.emailState.status === "sent") {
+    alerts.push({
+      title: "Report email sent",
+      detail: packet.emailState.subjectLinePreview ?? "The daily report was sent after the completed run.",
+      tone: "good",
     });
   } else if (packet.emailState.status === "sent_or_attempted") {
     alerts.push({
@@ -258,6 +363,7 @@ export function buildOperatorDashboardViewModel(
         },
       ],
     },
+    runControl: buildRunControl(packet),
     alerts: buildAlerts(packet),
     metrics: [
       { label: "Pending delivery", value: String(packet.deliveryState.pending) },
