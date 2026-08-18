@@ -41,10 +41,14 @@ function factPillStyle() {
   } as const;
 }
 
+function normalizeAeName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
 export default async function OperatorDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; dedupe?: string }>;
 }) {
   const sessionOk = await hasOperatorSession();
   const params = await searchParams;
@@ -153,6 +157,31 @@ export default async function OperatorDashboardPage({
     await closeOperatorAgentPacketRuntime();
   }
   const view = buildOperatorDashboardViewModel(packet);
+  const duplicateCleanup = (() => {
+    const flaggedAes = packet.coverageReview.flaggedAes;
+
+    for (const archiveCandidate of flaggedAes) {
+      if (
+        archiveCandidate.deliveryMinMatchQuality !== "Moderate" ||
+        archiveCandidate.diagnosis !== "Routing setup incomplete"
+      ) {
+        continue;
+      }
+
+      const retainedThesis = flaggedAes.find(
+        (item) =>
+          item.aeThesisId !== archiveCandidate.aeThesisId &&
+          item.deliveryMinMatchQuality === "Strong" &&
+          normalizeAeName(item.aeName) === normalizeAeName(archiveCandidate.aeName),
+      );
+
+      if (retainedThesis) {
+        return { archiveCandidate, retainedThesis };
+      }
+    }
+
+    return null;
+  })();
 
   return (
     <main style={{ padding: "24px", maxWidth: "1180px", margin: "0 auto" }}>
@@ -464,6 +493,72 @@ export default async function OperatorDashboardPage({
           accent="blue"
         />
       </section>
+
+      {params.dedupe === "success" ? (
+        <section
+          style={{
+            ...toneClass("good"),
+            marginTop: "20px",
+            border: "1px solid",
+            borderRadius: "22px",
+            padding: "18px",
+          }}
+        >
+          <strong>Duplicate record archived.</strong> The Strong-only routed thesis remains active. No ClickUp tasks or Airtable cursor were changed.
+        </section>
+      ) : null}
+
+      {duplicateCleanup ? (
+        <section
+          style={{
+            marginTop: "20px",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%)",
+            border: "1px solid var(--line)",
+            borderRadius: "22px",
+            padding: "20px",
+            boxShadow: "0 14px 34px rgba(15, 23, 42, 0.05)",
+          }}
+        >
+          <p style={{ margin: 0, color: "var(--teal)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+            Duplicate AE Record Cleanup
+          </p>
+          <h2 style={{ margin: "8px 0", fontSize: "1.38rem", lineHeight: 1.05 }}>
+            Keep the Strong-only routing for {duplicateCleanup.retainedThesis.aeName}
+          </h2>
+          <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.55, maxWidth: "760px" }}>
+            This archives the duplicate Moderate record with no ClickUp destination. The active Strong-only routed record stays in place. Any unsent duplicate jobs are cancelled first. Existing ClickUp tasks and the Airtable cursor are not changed.
+          </p>
+          <form action="/api/dfm/internal/ae-theses/deactivate-duplicate" method="post" style={{ marginTop: "16px", display: "grid", gap: "12px" }}>
+            <input type="hidden" name="archiveAeThesisId" value={duplicateCleanup.archiveCandidate.aeThesisId} />
+            <input type="hidden" name="retainAeThesisId" value={duplicateCleanup.retainedThesis.aeThesisId} />
+            <label style={{ display: "flex", gap: "10px", alignItems: "start", color: "var(--ink)", lineHeight: 1.45 }}>
+              <input type="checkbox" name="confirmation" value="ARCHIVE_DUPLICATE" required style={{ marginTop: "3px" }} />
+              I confirm that the Moderate, unrouted duplicate should be archived and the Strong-only routed record should remain active.
+            </label>
+            <div>
+              <button
+                type="submit"
+                style={{
+                  border: "none",
+                  borderRadius: "999px",
+                  background: "var(--danger)",
+                  color: "#fff",
+                  padding: "11px 16px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Archive Moderate duplicate
+              </button>
+            </div>
+          </form>
+          {params.dedupe && params.dedupe !== "success" ? (
+            <p style={{ margin: "14px 0 0", color: "var(--danger)", lineHeight: 1.5 }}>
+              The cleanup was not applied. The records no longer matched the required safe pattern, or the request was not authorized.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <section
         style={{

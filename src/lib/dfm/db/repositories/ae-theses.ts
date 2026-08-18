@@ -71,3 +71,16 @@ export async function updateAeDeliveryMinMatchQuality(
     [aeThesisId, deliveryMinMatchQuality],
   );
 }
+
+export async function archiveAeThesis(aeThesisId: string) {
+  return queryOne(
+    `
+      update dfm_public.ae_theses
+      set status = 'archived'::dfm_private.ae_status
+      where id = $1
+        and status = 'active'::dfm_private.ae_status
+      returning *
+    `,
+    [aeThesisId],
+  );
+}

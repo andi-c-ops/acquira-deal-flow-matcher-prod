@@ -120,6 +120,27 @@ export async function getDeliveryJobById(jobId: string) {
   return queryOne(`select * from dfm_private.clickup_delivery_jobs where id = $1`, [jobId]);
 }
 
+export async function cancelOpenDeliveryJobsForAeThesis(aeThesisId: string) {
+  return queryOne(
+    `
+      with cancelled as (
+        update dfm_private.clickup_delivery_jobs
+        set
+          status = 'cancelled'::dfm_private.job_status,
+          last_error = 'Cancelled because the duplicate AE thesis was archived',
+          claimed_by = null,
+          claimed_at = null
+        where ae_thesis_id = $1
+          and status in ('pending', 'retry_scheduled')
+        returning id
+      )
+      select count(*)::int as cancelled_count
+      from cancelled
+    `,
+    [aeThesisId],
+  );
+}
+
 export async function listDeliveryJobStatusCountsByRunId(runId: string) {
   return queryMany(
     `
