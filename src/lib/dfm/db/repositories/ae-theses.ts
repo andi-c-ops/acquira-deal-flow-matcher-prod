@@ -8,6 +8,48 @@ export interface UpsertAeThesisInput {
   submittedAt?: string | null;
 }
 
+export async function findActiveAeThesisByEmail(aeEmail?: string | null) {
+  const normalizedEmail = aeEmail?.trim() ?? "";
+  if (!normalizedEmail) {
+    return { data: null, error: null };
+  }
+
+  return queryOne(
+    `
+      select *
+      from dfm_public.ae_theses
+      where status = 'active'::dfm_private.ae_status
+        and lower(btrim(coalesce(ae_email, ''))) = lower(btrim($1))
+      order by
+        (nullif(btrim(clickup_list_id), '') is not null) desc,
+        (delivery_min_match_quality = 'Strong') desc,
+        updated_at desc
+      limit 1
+    `,
+    [normalizedEmail],
+  );
+}
+
+export async function refreshAeThesisSubmission(
+  aeThesisId: string,
+  input: Pick<UpsertAeThesisInput, "aeName" | "aeEmail" | "submittedAt">,
+) {
+  return queryOne(
+    `
+      update dfm_public.ae_theses
+      set
+        ae_name = $2,
+        ae_email = coalesce(nullif(btrim($3), ''), ae_email),
+        first_submitted_at = coalesce(first_submitted_at, $4::timestamptz),
+        last_submitted_at = $4::timestamptz
+      where id = $1
+        and status = 'active'::dfm_private.ae_status
+      returning *
+    `,
+    [aeThesisId, input.aeName, input.aeEmail ?? null, input.submittedAt ?? null],
+  );
+}
+
 export async function upsertAeThesis(input: UpsertAeThesisInput) {
   return queryOne(
     `

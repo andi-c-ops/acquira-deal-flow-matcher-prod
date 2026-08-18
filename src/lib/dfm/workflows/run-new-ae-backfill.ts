@@ -1,6 +1,11 @@
 import type { BaseRunResult, RunNewAeBackfillInput } from "@/lib/dfm/domain/types";
 import { clearCurrentAeThesisVersions, insertAeThesisVersion } from "@/lib/dfm/db/repositories/ae-thesis-versions";
-import { updateAeLatestVersion, upsertAeThesis } from "@/lib/dfm/db/repositories/ae-theses";
+import {
+  findActiveAeThesisByEmail,
+  refreshAeThesisSubmission,
+  updateAeLatestVersion,
+  upsertAeThesis,
+} from "@/lib/dfm/db/repositories/ae-theses";
 import { upsertMatchCandidate } from "@/lib/dfm/db/repositories/match-candidates";
 import { listActiveNormalizedDeals } from "@/lib/dfm/db/repositories/deals";
 import { createMatchRun, updateMatchRunStatus } from "@/lib/dfm/db/repositories/match-runs";
@@ -28,14 +33,27 @@ export async function runNewAeBackfillWorkflow(
     unwrapSupabaseResult(await updateMatchRunStatus(runId, "running"));
 
     const normalized = normalizeAePayload(input.payload);
-    const aeRecord = unwrapSupabaseResult(
-      await upsertAeThesis({
-        externalSubmissionKey: input.submissionKey,
-        aeName: normalized.aeName,
-        aeEmail: normalized.aeEmail,
-        submittedAt: input.submittedAt,
-      }),
-    );
+    const existingAeResult = await findActiveAeThesisByEmail(normalized.aeEmail);
+    if (existingAeResult.error) {
+      throw new Error(existingAeResult.error.message);
+    }
+    const existingAe = existingAeResult.data;
+    const aeRecord = existingAe
+      ? unwrapSupabaseResult(
+          await refreshAeThesisSubmission(String(existingAe.id), {
+            aeName: normalized.aeName,
+            aeEmail: normalized.aeEmail,
+            submittedAt: input.submittedAt,
+          }),
+        )
+      : unwrapSupabaseResult(
+          await upsertAeThesis({
+            externalSubmissionKey: input.submissionKey,
+            aeName: normalized.aeName,
+            aeEmail: normalized.aeEmail,
+            submittedAt: input.submittedAt,
+          }),
+        );
 
     const aeThesisId = aeRecord.id as string;
     logInfo("Starting new AE backfill workflow", { runId, aeThesisId, input });
