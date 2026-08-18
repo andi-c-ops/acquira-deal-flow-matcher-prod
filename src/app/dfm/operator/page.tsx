@@ -136,8 +136,8 @@ export default async function OperatorDashboardPage({
             </button>
           </form>
           <p style={{ margin: "14px 0 0" }}>
-            <a href="/dfm/agents" style={{ color: "var(--accent)", fontWeight: 700 }}>
-              Back to Agent Launch
+            <a href="https://acquira-deal-flow-control-room.andicunanan2024.chatgpt.site" style={{ color: "var(--accent)", fontWeight: 700 }}>
+              Open Deal Flow Control Room
             </a>
           </p>
           {params.error === "unauthorized" ? (
@@ -230,8 +230,8 @@ export default async function OperatorDashboardPage({
             </h1>
             <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.6, fontWeight: 300, fontSize: "1.08rem" }}>{view.hero.summaryLine}</p>
             <p style={{ margin: "12px 0 0" }}>
-              <a href="/dfm/agents" style={{ color: "var(--accent)", fontWeight: 700 }}>
-                Open Agent Launch Page
+              <a href="https://acquira-deal-flow-control-room.andicunanan2024.chatgpt.site" style={{ color: "var(--accent)", fontWeight: 700 }}>
+                Open Deal Flow Control Room
               </a>
             </p>
           </div>
@@ -311,7 +311,7 @@ export default async function OperatorDashboardPage({
             <p style={{ margin: 0, lineHeight: 1.55, maxWidth: "760px" }}>{view.runControl.detail}</p>
           </div>
           <a
-            href="/dfm/agents"
+            href="https://acquira-deal-flow-control-room.andicunanan2024.chatgpt.site"
             style={{
               border: "1px solid currentColor",
               borderRadius: "999px",
@@ -322,7 +322,7 @@ export default async function OperatorDashboardPage({
               whiteSpace: "nowrap",
             }}
           >
-            Open agents
+            Open Control Room
           </a>
         </div>
         <div

@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { permanentRedirect } from "next/navigation";
 
 export default function HomePage() {
-  redirect("/dfm/operator");
+  permanentRedirect("https://acquira-deal-flow-control-room.andicunanan2024.chatgpt.site");
 }
