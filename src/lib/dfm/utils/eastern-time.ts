@@ -21,9 +21,18 @@ function getEasternParts(now = new Date()) {
   };
 }
 
-export function isScheduledEasternTime(targetHour: number, targetMinute: number, now = new Date()) {
+export function isScheduledEasternTime(
+  targetHour: number,
+  targetMinute: number,
+  now = new Date(),
+  graceMinutes = 5,
+) {
   const parts = getEasternParts(now);
-  return parts.hour === targetHour && parts.minute === targetMinute;
+  const currentMinuteOfDay = parts.hour * 60 + parts.minute;
+  const targetMinuteOfDay = targetHour * 60 + targetMinute;
+  const minutesAfterTarget = currentMinuteOfDay - targetMinuteOfDay;
+
+  return minutesAfterTarget >= 0 && minutesAfterTarget <= graceMinutes;
 }
 
 export function describeEasternNow(now = new Date()) {
