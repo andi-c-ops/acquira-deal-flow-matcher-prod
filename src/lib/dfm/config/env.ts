@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+const optionalRolloverSecret = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().min(1).optional(),
+);
+
 const envSchema = z.object({
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
@@ -12,9 +17,12 @@ const envSchema = z.object({
   CLICKUP_API_KEY: z.string().optional(),
   CLICKUP_TEAM_ID: z.string().optional(),
   CRON_SECRET: z.string().min(1).optional(),
+  CRON_SECRET_NEXT: optionalRolloverSecret,
   DFM_INTERNAL_SECRET: z.string().min(1).optional(),
+  DFM_INTERNAL_SECRET_NEXT: optionalRolloverSecret,
   DFM_DASHBOARD_READ_TOKEN: z.string().min(1).optional(),
   DFM_EVENT_SECRET: z.string().min(1).optional(),
+  DFM_EVENT_SECRET_NEXT: optionalRolloverSecret,
   GOOGLE_SHEET_ID: z.string().optional(),
   GOOGLE_API_KEY: z.string().optional(),
   GOOGLE_SHEET_RANGE: z.string().optional(),
@@ -37,10 +45,14 @@ const envSchema = z.object({
 
 export type DfmEnv = z.infer<typeof envSchema>;
 
+export function parseDfmEnv(source: Record<string, string | undefined>): DfmEnv {
+  return envSchema.parse(source);
+}
+
 let cachedEnv: DfmEnv | null = null;
 
 export function getEnv(): DfmEnv {
   if (cachedEnv) return cachedEnv;
-  cachedEnv = envSchema.parse(process.env);
+  cachedEnv = parseDfmEnv(process.env);
   return cachedEnv;
 }
