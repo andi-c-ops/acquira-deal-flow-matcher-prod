@@ -1,6 +1,9 @@
 import type { NormalizedAeThesis } from "@/lib/dfm/domain/types";
+import { parseGeographyTargets } from "@/lib/dfm/matching/geography-matcher";
 
-const NORMALIZATION_VERSION = "v2";
+const NORMALIZATION_VERSION = "v4";
+
+type RangeKind = "price" | "ebitda";
 
 function toStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -28,31 +31,58 @@ function firstString(...values: unknown[]): string | null {
   return null;
 }
 
-function parseRange(value: unknown): { min?: number; max?: number } {
+function fallbackMultiplier(value: number, values: number[], kind: RangeKind) {
+  const max = Math.max(...values);
+
+  if (kind === "price") {
+    if (value <= 100) return 1_000_000;
+    if (value < 10_000) return 1_000;
+    return 1;
+  }
+
+  if (value <= 10 && max <= 10) return 1_000_000;
+  if (value <= 10 && max >= 100 && max < 10_000) return 1_000_000;
+  if (value < 10_000) return 1_000;
+  return 1;
+}
+
+function suffixMultiplier(suffix: string | undefined): number | null {
+  const normalized = suffix?.toLowerCase();
+  if (!normalized) return null;
+  if (["m", "mm", "mill", "million"].includes(normalized)) return 1_000_000;
+  if (["k", "thousand"].includes(normalized)) return 1_000;
+  return null;
+}
+
+function parseRange(value: unknown, kind: RangeKind): { min?: number; max?: number } {
   if (typeof value !== "string" || value.trim() === "") {
     return {};
   }
 
-  const matches = Array.from(value.matchAll(/(\d+(?:\.\d+)?)\s*([kKmM])?/g));
+  const cleaned = value.replace(/(?<=\d),(?=\s*\d)/g, "");
+  const matches = Array.from(
+    cleaned.matchAll(/(\d+(?:\.\d+)?)\s*(million|mill|mm|m|thousand|k)?/gi),
+  );
   if (matches.length === 0) {
     return {};
   }
 
-  const hasMillionSuffix = matches.some((match) => match[2]?.toLowerCase() === "m");
-  const hasThousandSuffix = matches.some((match) => match[2]?.toLowerCase() === "k");
-  const inferredSuffix = hasMillionSuffix ? "m" : hasThousandSuffix ? "k" : null;
-  const parsed = matches.map((match) => {
-    const numericValue = Number(match[1]);
-    const suffix = match[2]?.toLowerCase() ?? inferredSuffix;
+  const numericValues = matches.map((match) => Number(match[1]));
+  const explicitMultipliers = matches
+    .map((match) => suffixMultiplier(match[2]))
+    .filter((multiplier): multiplier is number => multiplier !== null);
+  const sharedExplicitMultiplier = new Set(explicitMultipliers).size === 1 ? explicitMultipliers[0] : null;
 
-    if (suffix === "m") {
-      return numericValue * 1_000_000;
-    }
-    if (suffix === "k") {
-      return numericValue * 1_000;
-    }
-    return numericValue;
+  const parsed = matches.map((match, index) => {
+    const numericValue = numericValues[index];
+    const multiplier =
+      suffixMultiplier(match[2]) ??
+      (numericValue < 10_000 ? sharedExplicitMultiplier : null) ??
+      fallbackMultiplier(numericValue, numericValues, kind);
+    return numericValue * multiplier;
   });
+
+  if (parsed.every((item) => item === 0)) return {};
 
   if (parsed.length === 1) {
     return { min: parsed[0], max: parsed[0] };
@@ -64,7 +94,20 @@ function parseRange(value: unknown): { min?: number; max?: number } {
   };
 }
 
-export function normalizeAePayload(payload: Record<string, unknown>): NormalizedAeThesis {
+function preservePreviousRange(
+  parsed: { min?: number; max?: number },
+  previousMin: number | null | undefined,
+  previousMax: number | null | undefined,
+) {
+  if (parsed.min !== undefined || parsed.max !== undefined) return parsed;
+  if (previousMin == null && previousMax == null) return parsed;
+  return { min: previousMin ?? undefined, max: previousMax ?? undefined };
+}
+
+export function normalizeAePayload(
+  payload: Record<string, unknown>,
+  previous?: NormalizedAeThesis | null,
+): NormalizedAeThesis {
   const aeName =
     firstString(
       payload.aeName,
@@ -103,15 +146,25 @@ export function normalizeAePayload(payload: Record<string, unknown>): Normalized
       .filter(Boolean)
       .join("; "),
   );
-  const price = parseRange(
-    payload.priceTarget ??
-      payload.price_target ??
-      payload["What is the desired asking price for the business you’re interested in?"],
+  const price = preservePreviousRange(
+    parseRange(
+      payload.priceTarget ??
+        payload.price_target ??
+        payload["What is the desired asking price for the business you’re interested in?"],
+      "price",
+    ),
+    previous?.priceMin,
+    previous?.priceMax,
   );
-  const ebitda = parseRange(
-    payload.ebitdaRange ??
-      payload.ebitda_range ??
-      payload["What is the Adjusted EBITDA/SDE that you are seeking? "],
+  const ebitda = preservePreviousRange(
+    parseRange(
+      payload.ebitdaRange ??
+        payload.ebitda_range ??
+        payload["What is the Adjusted EBITDA/SDE that you are seeking? "],
+      "ebitda",
+    ),
+    previous?.ebitdaMin,
+    previous?.ebitdaMax,
   );
 
   const summaryParts = [
@@ -130,6 +183,7 @@ export function normalizeAePayload(payload: Record<string, unknown>): Normalized
     aeEmail,
     industries,
     geography,
+    geographyTargets: parseGeographyTargets(geography),
     priceMin: price.min ?? null,
     priceMax: price.max ?? null,
     ebitdaMin: ebitda.min ?? null,

@@ -1,3 +1,3 @@
-export function buildClickupDedupeKey(aeThesisId: string, dealId: string): string {
-  return `ae:${aeThesisId}:deal:${dealId}:target:clickup`;
+export function buildClickupDedupeKey(clickupListId: string, dealId: string): string {
+  return `list:${clickupListId}:deal:${dealId}:target:clickup`;
 }

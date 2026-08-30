@@ -59,3 +59,17 @@ export async function listCurrentAeThesisVersions(aeThesisIds: string[]) {
     [aeThesisIds],
   );
 }
+
+export async function getCurrentAeThesisVersion(aeThesisId: string) {
+  return queryOne(
+    `
+      select *
+      from dfm_private.ae_thesis_versions
+      where ae_thesis_id = $1
+        and is_current = true
+      order by submitted_at desc
+      limit 1
+    `,
+    [aeThesisId],
+  );
+}

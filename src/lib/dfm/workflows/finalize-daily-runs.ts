@@ -27,6 +27,7 @@ type CriteriaDetail = {
   criterion: string;
   match: boolean;
   score: number;
+  applicable?: boolean;
   dealValue: string;
   thesisValue: string;
 };
@@ -90,6 +91,7 @@ function normalizeCriteriaDetails(value: unknown): CriteriaDetail[] {
       criterion: String(detail.criterion ?? ""),
       match: detail.match === true,
       score: toNumber(detail.score),
+      applicable: detail.applicable !== false,
       dealValue: String(detail.dealValue ?? ""),
       thesisValue: String(detail.thesisValue ?? ""),
     }))

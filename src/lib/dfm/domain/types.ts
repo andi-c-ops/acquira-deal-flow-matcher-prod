@@ -74,12 +74,18 @@ export interface NormalizedAeThesis {
   aeEmail?: string | null;
   industries: string[];
   geography: string[];
+  geographyTargets?: NormalizedGeographyTarget[];
   priceMin?: number | null;
   priceMax?: number | null;
   ebitdaMin?: number | null;
   ebitdaMax?: number | null;
   summary: string;
   normalizationVersion: string;
+}
+
+export interface NormalizedGeographyTarget {
+  location?: string | null;
+  state?: string | null;
 }
 
 export interface NormalizedDeal {
@@ -101,6 +107,7 @@ export interface MatchCriterionDetail {
   criterion: string;
   match: boolean;
   score: number;
+  applicable?: boolean;
   dealValue: string;
   thesisValue: string;
 }

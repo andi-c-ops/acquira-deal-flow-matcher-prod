@@ -53,6 +53,7 @@ type AeReport = {
       criterion: string;
       match: boolean;
       score: number;
+      applicable?: boolean;
       dealValue: string;
       thesisValue: string;
     }>;
@@ -260,7 +261,10 @@ export async function runDailyWorkflow(input: RunDailyInput): Promise<BaseRunRes
                 dealId: String(normalizedDealRecord.id),
                 matchCandidateId: String(candidate.id),
                 clickupListId: String(ae.clickup_list_id),
-                dedupeKey: buildClickupDedupeKey(String(ae.id), String(normalizedDealRecord.id)),
+                dedupeKey: buildClickupDedupeKey(
+                  String(ae.clickup_list_id),
+                  String(normalizedDealRecord.id),
+                ),
               }),
             );
           }

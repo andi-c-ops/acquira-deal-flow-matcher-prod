@@ -1,7 +1,16 @@
-import type { BaseRunResult, RunNewAeBackfillInput } from "@/lib/dfm/domain/types";
-import { clearCurrentAeThesisVersions, insertAeThesisVersion } from "@/lib/dfm/db/repositories/ae-thesis-versions";
+import type {
+  BaseRunResult,
+  NormalizedAeThesis,
+  RunNewAeBackfillInput,
+} from "@/lib/dfm/domain/types";
+import {
+  clearCurrentAeThesisVersions,
+  getCurrentAeThesisVersion,
+  insertAeThesisVersion,
+} from "@/lib/dfm/db/repositories/ae-thesis-versions";
 import {
   findActiveAeThesisByEmail,
+  listActiveAeThesesByName,
   refreshAeThesisSubmission,
   updateAeLatestVersion,
   upsertAeThesis,
@@ -32,12 +41,34 @@ export async function runNewAeBackfillWorkflow(
   try {
     unwrapSupabaseResult(await updateMatchRunStatus(runId, "running"));
 
-    const normalized = normalizeAePayload(input.payload);
-    const existingAeResult = await findActiveAeThesisByEmail(normalized.aeEmail);
+    const incoming = normalizeAePayload(input.payload);
+    const existingAeResult = await findActiveAeThesisByEmail(incoming.aeEmail);
     if (existingAeResult.error) {
       throw new Error(existingAeResult.error.message);
     }
     const existingAe = existingAeResult.data;
+    if (!existingAe) {
+      const sameNameResult = await listActiveAeThesesByName(incoming.aeName);
+      if (sameNameResult.error) {
+        throw new Error(sameNameResult.error.message);
+      }
+      if ((sameNameResult.data ?? []).length > 0) {
+        throw new Error(
+          `Potential duplicate AE submission held for review: ${incoming.aeName}. ` +
+            "The email does not match the active record.",
+        );
+      }
+    }
+    const previousVersionResult = existingAe
+      ? await getCurrentAeThesisVersion(String(existingAe.id))
+      : { data: null, error: null };
+    if (previousVersionResult.error) {
+      throw new Error(previousVersionResult.error.message);
+    }
+    const previousNormalized = previousVersionResult.data?.normalized_payload as
+      | NormalizedAeThesis
+      | undefined;
+    const normalized = normalizeAePayload(input.payload, previousNormalized);
     const aeRecord = existingAe
       ? unwrapSupabaseResult(
           await refreshAeThesisSubmission(String(existingAe.id), {

@@ -30,6 +30,20 @@ export async function findActiveAeThesisByEmail(aeEmail?: string | null) {
   );
 }
 
+export async function listActiveAeThesesByName(aeName: string) {
+  return queryMany(
+    `
+      select *
+      from dfm_public.ae_theses
+      where status = 'active'::dfm_private.ae_status
+        and lower(regexp_replace(btrim(ae_name), '\\s+', ' ', 'g')) =
+          lower(regexp_replace(btrim($1), '\\s+', ' ', 'g'))
+      order by updated_at desc
+    `,
+    [aeName],
+  );
+}
+
 export async function refreshAeThesisSubmission(
   aeThesisId: string,
   input: Pick<UpsertAeThesisInput, "aeName" | "aeEmail" | "submittedAt">,
@@ -111,6 +125,21 @@ export async function updateAeDeliveryMinMatchQuality(
   return queryOne(
     `update dfm_public.ae_theses set delivery_min_match_quality = $2 where id = $1 returning *`,
     [aeThesisId, deliveryMinMatchQuality],
+  );
+}
+
+export async function updateAeIdentity(
+  aeThesisId: string,
+  input: { aeName: string; aeEmail: string },
+) {
+  return queryOne(
+    `
+      update dfm_public.ae_theses
+      set ae_name = $2, ae_email = $3
+      where id = $1
+      returning *
+    `,
+    [aeThesisId, input.aeName, input.aeEmail],
   );
 }
 

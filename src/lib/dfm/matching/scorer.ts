@@ -1,4 +1,6 @@
 import type { MatchCriterionDetail, MatchScore, NormalizedAeThesis, NormalizedDeal } from "@/lib/dfm/domain/types";
+import { matchesGeography, parseGeographyTargets } from "@/lib/dfm/matching/geography-matcher";
+import { matchesIndustry } from "@/lib/dfm/matching/industry-matcher";
 
 function checkIndustry(deal: NormalizedDeal, thesis: NormalizedAeThesis): MatchCriterionDetail {
   const dealIndustry = deal.industry ?? "Unknown";
@@ -6,20 +8,20 @@ function checkIndustry(deal: NormalizedDeal, thesis: NormalizedAeThesis): MatchC
     return {
       criterion: "Industry",
       match: true,
-      score: 1,
+      score: 0,
+      applicable: false,
       dealValue: dealIndustry,
       thesisValue: "Any",
     };
   }
 
-  const match = thesis.industries.some((industry) =>
-    dealIndustry.toLowerCase().includes(industry.toLowerCase()),
-  );
+  const match = matchesIndustry(deal, thesis.industries);
 
   return {
     criterion: "Industry",
     match,
     score: match ? 1 : 0,
+    applicable: true,
     dealValue: dealIndustry,
     thesisValue: thesis.industries.join(", "),
   };
@@ -31,18 +33,21 @@ function checkGeography(deal: NormalizedDeal, thesis: NormalizedAeThesis): Match
     return {
       criterion: "Geography",
       match: true,
-      score: 1,
+      score: 0,
+      applicable: false,
       dealValue: combined,
       thesisValue: "Any",
     };
   }
 
-  const match = thesis.geography.some((geo) => combined.toLowerCase().includes(geo.toLowerCase()));
+  const targets = thesis.geographyTargets ?? parseGeographyTargets(thesis.geography);
+  const match = matchesGeography(deal.location, deal.state, targets);
 
   return {
     criterion: "Geography",
     match,
     score: match ? 1 : 0,
+    applicable: true,
     dealValue: combined,
     thesisValue: thesis.geography.join(", "),
   };
@@ -58,17 +63,19 @@ function checkRange(
     return {
       criterion,
       match: true,
-      score: 1,
+      score: 0,
+      applicable: false,
       dealValue: value == null ? "Unknown" : String(value),
       thesisValue: "Any",
     };
   }
 
-  if (value == null) {
+  if (value == null || value <= 0) {
     return {
       criterion,
       match: false,
       score: 0,
+      applicable: false,
       dealValue: "Unknown",
       thesisValue: `${min ?? "?"} to ${max ?? "?"}`,
     };
@@ -79,6 +86,7 @@ function checkRange(
     criterion,
     match,
     score: match ? 1 : 0,
+    applicable: true,
     dealValue: String(value),
     thesisValue: `${min ?? "?"} to ${max ?? "?"}`,
   };
@@ -92,13 +100,15 @@ export function scoreDealAgainstThesis(deal: NormalizedDeal, thesis: NormalizedA
     checkRange("EBITDA", deal.ebitda ?? null, thesis.ebitdaMin, thesis.ebitdaMax),
   ];
 
-  const totalScore = criteria.reduce((sum, item) => sum + item.score, 0);
-  const scorePct = (totalScore / criteria.length) * 100;
+  const applicableCriteria = criteria.filter((item) => item.applicable !== false);
+  const matchedCriteria = applicableCriteria.filter((item) => item.match).length;
+  const totalScore = applicableCriteria.reduce((sum, item) => sum + item.score, 0);
+  const scorePct = applicableCriteria.length === 0 ? 0 : (totalScore / applicableCriteria.length) * 100;
 
   let matchQuality: MatchScore["matchQuality"] = "Weak";
-  if (scorePct >= 80) {
+  if (scorePct >= 80 && matchedCriteria >= 3) {
     matchQuality = "Strong";
-  } else if (scorePct >= 50) {
+  } else if (scorePct >= 50 && matchedCriteria >= 2) {
     matchQuality = "Moderate";
   }
 

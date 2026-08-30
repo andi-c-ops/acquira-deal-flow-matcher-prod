@@ -25,6 +25,7 @@ interface DailyMatchEmail {
       criterion: string;
       match: boolean;
       score: number;
+      applicable?: boolean;
       dealValue: string;
       thesisValue: string;
     }>;
@@ -308,6 +309,7 @@ function getAeDriftExplanation(ae: DisplayMatchEmail) {
   for (const match of ae.matches) {
     if (match.matchQuality !== "Moderate") continue;
     for (const detail of match.criteriaDetails ?? []) {
+      if (detail.applicable === false) continue;
       if (detail.match) continue;
       criterionCounts.set(detail.criterion, (criterionCounts.get(detail.criterion) ?? 0) + 1);
     }
@@ -348,6 +350,7 @@ function getAeDriftRecommendation(ae: DisplayMatchEmail) {
   for (const match of ae.matches) {
     if (match.matchQuality !== "Moderate") continue;
     for (const detail of match.criteriaDetails ?? []) {
+      if (detail.applicable === false) continue;
       if (detail.match) continue;
       criterionCounts.set(detail.criterion, (criterionCounts.get(detail.criterion) ?? 0) + 1);
     }

@@ -30,6 +30,7 @@ type AeReport = {
       criterion: string;
       match: boolean;
       score: number;
+      applicable?: boolean;
       dealValue: string;
       thesisValue: string;
     }>;

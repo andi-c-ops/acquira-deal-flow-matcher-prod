@@ -10,6 +10,8 @@
     "test:unit": "node --import tsx --test tests/unit/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "operator-packet": "node --import tsx scripts/build-operator-agent-packet.ts",
+    "preview-scoring": "node --import tsx scripts/preview-scoring-policy.ts",
+    "preview-scoring-full": "node --import tsx scripts/preview-full-scoring-policy.ts",
     "smoke": "node --import tsx scripts/smoke.ts",
     "live-test": "node --import tsx scripts/live-test.ts",
     "readiness": "node --import tsx scripts/readiness.ts",
