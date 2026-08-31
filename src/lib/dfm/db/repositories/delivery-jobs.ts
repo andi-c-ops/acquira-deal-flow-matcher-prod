@@ -52,6 +52,13 @@ export async function insertDeliveryJob(input: InsertDeliveryJobInput) {
           when dfm_private.clickup_delivery_jobs.sent_at is not null then dfm_private.clickup_delivery_jobs.next_attempt_at
           else now()
         end,
+        -- A later run re-enqueueing the same dedupe key is fresh delivery
+        -- intent, so an unsent job gets its retry budget back rather than
+        -- staying permanently exhausted from an earlier failure.
+        attempt_count = case
+          when dfm_private.clickup_delivery_jobs.sent_at is not null then dfm_private.clickup_delivery_jobs.attempt_count
+          else 0
+        end,
         claimed_by = null,
         claimed_at = null,
         last_error = null
@@ -89,8 +96,11 @@ export async function updateDeliveryJobStatus(
         claimed_at = coalesce($5::timestamptz, claimed_at),
         sent_at = coalesce($6::timestamptz, sent_at),
         last_error = coalesce($7::text, last_error),
+        -- One claim is one attempt. Counting the later retry_scheduled or
+        -- failed_terminal transition as well would double-count every cycle
+        -- and halve the effective max_attempts budget.
         attempt_count = case
-          when $2::text in ('processing', 'retry_scheduled', 'failed_terminal') then attempt_count + 1
+          when $2::text = 'processing' then attempt_count + 1
           else attempt_count
         end
       where id = $1

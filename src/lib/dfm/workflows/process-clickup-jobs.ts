@@ -13,6 +13,12 @@ import {
   insertDeliveryReceipt,
 } from "@/lib/dfm/db/repositories/delivery-receipts";
 import { classifyDeliveryFailure } from "@/lib/dfm/jobs/classify-delivery-failure";
+import {
+  describeAlreadyExhaustedBudget,
+  describeFinalAttemptFailure,
+  isFinalAttempt,
+  isRetryBudgetExhausted,
+} from "@/lib/dfm/jobs/retry-budget";
 import { logError, logInfo } from "@/lib/dfm/observability/logger";
 import { createClickupDealTask } from "@/lib/dfm/providers/clickup-client";
 import { sendErrorNotification } from "@/lib/dfm/providers/notification-client";
@@ -124,6 +130,26 @@ export async function processClickupJobsWorkflow(
         continue;
       }
 
+      // A job left over the retry ceiling by earlier unbounded-retry behaviour
+      // must be escalated rather than skipped. Skipping would leave it
+      // `retry_scheduled`, which the finalizer counts as still pending, so the
+      // owning run would never close and the Airtable cursor would never move.
+      if (isRetryBudgetExhausted(job)) {
+        const reason = describeAlreadyExhaustedBudget(job);
+        unwrapSupabaseResult(
+          await updateDeliveryJobStatus(jobId, "failed_terminal", {
+            last_error: reason,
+          }),
+        );
+        terminal += 1;
+        logError("ClickUp delivery job abandoned after exhausting its retry budget", {
+          runId,
+          jobId,
+          reason,
+        });
+        continue;
+      }
+
       try {
         unwrapSupabaseResult(
           await updateDeliveryJobStatus(jobId, "processing", {
@@ -219,6 +245,22 @@ export async function processClickupJobsWorkflow(
             }),
           );
           terminal += 1;
+        } else if (isFinalAttempt(job)) {
+          // Retryable, but the budget is spent. Fail terminally so the
+          // finalizer marks the run failed and sends the error email instead
+          // of holding the Airtable cursor open indefinitely.
+          const reason = describeFinalAttemptFailure(job, classification.reason);
+          unwrapSupabaseResult(
+            await updateDeliveryJobStatus(jobId, "failed_terminal", {
+              last_error: reason,
+            }),
+          );
+          terminal += 1;
+          logError("ClickUp delivery job failed on its final permitted attempt", {
+            runId,
+            jobId,
+            reason,
+          });
         } else {
           unwrapSupabaseResult(
             await updateDeliveryJobStatus(jobId, "retry_scheduled", {

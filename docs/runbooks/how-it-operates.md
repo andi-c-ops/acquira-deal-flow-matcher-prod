@@ -406,13 +406,16 @@ Safeguard:
 
 Delivery failures are classified by `classify-delivery-failure.ts`.
 
+Classification reads the HTTP status out of the provider error message, preferring the explicit `with status NNN` phrase that the ClickUp client emits. A bare 4xx or 5xx token is the fallback, and word boundaries keep long numeric ClickUp list and task ids from being read as status codes.
+
 ### Retry Cases
 
-These are currently treated as retryable:
+These are treated as retryable:
 
-- 429-like responses
-- 5xx-like responses
-- unknown transient failures
+- `429`, `408`, `409`, and `425` responses
+- any `5xx` response
+- network and timeout failures that carry no status, such as a request timeout, `ENOTFOUND`, `ECONNRESET`, or `socket hang up`
+- unclassifiable failures
 
 Behavior:
 - job status becomes `retry_scheduled`
@@ -420,13 +423,27 @@ Behavior:
 
 ### Terminal Cases
 
-These are currently treated as terminal:
+These are treated as terminal:
 
+- every other `4xx` response, including `400`, `401`, `403`, `404`, and `422`
 - authorization failures
 - invalid or missing configuration-like failures
 
 Behavior:
 - job status becomes `failed_terminal`
+
+### Retry Budget
+
+Every delivery job carries `attempt_count` and `max_attempts`, defaulting to 6 attempts.
+
+- one claim is one attempt, so `attempt_count` increments on the `processing` transition only
+- a retryable failure on the last permitted attempt becomes `failed_terminal` rather than `retry_scheduled`
+- a job found already at or over its ceiling is escalated to `failed_terminal` before any ClickUp call
+- a later daily run re-enqueueing the same dedupe key resets `attempt_count` for an unsent job, so fresh delivery intent gets a fresh budget
+
+Why the ceiling matters: `finalizeDailyRunsWorkflow` counts a `retry_scheduled` job as still pending and will not advance the Airtable cursor while any remain. Without a ceiling, one permanently failing job holds the cursor open forever and no terminal-failure email is ever sent. Terminal failure is the loud path that gets the run closed and the operator notified.
+
+Put differently: a job that can never succeed now gives up after six tries and raises an alarm, instead of retrying every minute in silence and quietly freezing the whole delivery queue behind it.
 
 ### Run Failure Behavior
 

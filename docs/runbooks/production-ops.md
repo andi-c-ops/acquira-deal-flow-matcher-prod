@@ -116,6 +116,8 @@ Safety notes:
 
 - The Airtable cursor advances only after required ClickUp delivery succeeds.
 - ClickUp delivery uses idempotent dedupe keys and receipts to avoid duplicate tasks.
+- ClickUp delivery jobs have a bounded retry budget of `max_attempts`, default 6. A job that exhausts it becomes `failed_terminal`, which marks the daily run failed and sends the error email rather than holding the Airtable cursor open indefinitely.
+- Only genuine `5xx`, `429`, `408`, `409`, `425`, and network or timeout failures are retried. Other `4xx` responses are terminal on the first attempt.
 - Failed daily runs should send an error email and leave the cursor unchanged.
 - There is no automatic 90-day untouched-deal deletion in ClickUp or Airtable.
 - Any stale-deal cleanup should begin as a read-only review or archive proposal, not a delete action.
