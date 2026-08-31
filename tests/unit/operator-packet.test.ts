@@ -3,6 +3,78 @@ import assert from "node:assert/strict";
 
 import { buildOperatorAgentPacket } from "../../src/lib/dfm/agents/operator-packet";
 
+function buildCompletedPacket(receiptIntegrity: {
+  jobs: number;
+  receipts: number;
+  distinctTaskIds: number;
+  nonSentJobs: number;
+}) {
+  return buildOperatorAgentPacket({
+    generatedAt: "2026-08-31T15:30:00.000Z",
+    timezone: "America/New_York",
+    environment: "production",
+    latestRuns: {
+      daily: {
+        id: "daily-complete",
+        runType: "daily",
+        status: "succeeded",
+        createdAt: "2026-08-31T13:30:00.000Z",
+        startedAt: "2026-08-31T13:30:01.000Z",
+        finishedAt: "2026-08-31T13:32:00.000Z",
+        cursorStart: "2026-08-30T13:30:00.000Z",
+        cursorEnd: "2026-08-31T13:30:00.000Z",
+        summary: {
+          clickupDelivery: { mode: "deferred_worker" },
+          reportEmail: { status: "sent" },
+        },
+      },
+      newAeCheck: null,
+      clickupWorker: null,
+    },
+    cursors: {
+      airtableDailyDeals: {
+        key: "airtable_daily_deals",
+        cursorTimestamp: "2026-08-31T13:30:00.000Z",
+      },
+      googleNewAeSubmission: null,
+    },
+    delivery: {
+      pending: 0,
+      processing: 0,
+      retryScheduled: 0,
+      sent: receiptIntegrity.jobs - receiptIntegrity.nonSentJobs,
+      failedTerminal: 0,
+      cancelled: 0,
+      total: receiptIntegrity.jobs,
+    },
+    receiptIntegrity,
+    staleDeals: {
+      thresholdDays: 90,
+      clickupCount: 0,
+      airtableCount: 0,
+      clickupSamples: [],
+      airtableSamples: [],
+      basis: "local_workflow_timestamps",
+    },
+    coverageReview: {
+      windowDays: 7,
+      lowMatchThreshold: 1,
+      reviewThreshold30Days: 3,
+      totalActiveAes: 0,
+      underservedAeCount: 0,
+      zeroMatchLast7DaysCount: 0,
+      noCurrentThesisCount: 0,
+      noClickupDestinationCount: 0,
+      engagementSnapshot: {
+        status: "stale_or_unavailable",
+        observedAt: null,
+        expectedRefresh: "Every 6 hours by the scheduled ClickUp engagement snapshot.",
+      },
+      flaggedAes: [],
+    },
+  });
+}
+
 test("buildOperatorAgentPacket derives email and cursor guardrails from live-style run summaries", () => {
   const packet = buildOperatorAgentPacket({
     generatedAt: "2026-08-12T12:00:00.000Z",
@@ -91,6 +163,12 @@ test("buildOperatorAgentPacket derives email and cursor guardrails from live-sty
       cancelled: 0,
       total: 5,
     },
+    receiptIntegrity: {
+      jobs: 5,
+      receipts: 3,
+      distinctTaskIds: 3,
+      nonSentJobs: 2,
+    },
     staleDeals: {
       thresholdDays: 90,
       clickupCount: 1,
@@ -157,10 +235,39 @@ test("buildOperatorAgentPacket derives email and cursor guardrails from live-sty
   assert.equal(packet.emailState.status, "not_sent_yet");
   assert.equal(packet.emailState.expected, true);
   assert.equal(packet.deliveryState.pending, 5);
+  assert.equal(packet.receiptState.status, "pending");
+  assert.equal(packet.receiptState.parityConfirmed, false);
+  assert.equal(packet.receiptState.runId, "daily-1");
   assert.equal(packet.staleDealState.thresholdDays, 90);
   assert.equal(packet.staleDealState.clickupCount, 1);
   assert.equal(packet.coverageReview.underservedAeCount, 2);
   assert.equal(packet.coverageReview.flaggedAes[0]?.recentlyUpdatedDeals14Days, 2);
   assert.equal(packet.latestRuns.daily?.summary.fetchedDeals, 8);
   assert.equal(packet.referenceRules.deliveryPath, "daily_run_only");
+});
+
+test("buildOperatorAgentPacket verifies exact job-to-receipt parity for a completed run", () => {
+  const packet = buildCompletedPacket({
+    jobs: 26,
+    receipts: 26,
+    distinctTaskIds: 26,
+    nonSentJobs: 0,
+  });
+
+  assert.equal(packet.receiptState.status, "verified");
+  assert.equal(packet.receiptState.parityConfirmed, true);
+  assert.equal(packet.receiptState.runId, "daily-complete");
+});
+
+test("buildOperatorAgentPacket flags a completed run whose receipts do not match its jobs", () => {
+  const packet = buildCompletedPacket({
+    jobs: 26,
+    receipts: 25,
+    distinctTaskIds: 25,
+    nonSentJobs: 1,
+  });
+
+  assert.equal(packet.receiptState.status, "mismatch");
+  assert.equal(packet.receiptState.parityConfirmed, false);
+  assert.match(packet.receiptState.expectedBehavior, /Do not close the run as fully healthy/);
 });

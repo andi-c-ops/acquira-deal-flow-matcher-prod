@@ -8,6 +8,7 @@ import { listActiveAeTheses } from "@/lib/dfm/db/repositories/ae-theses";
 import { listCurrentAeThesisVersions } from "@/lib/dfm/db/repositories/ae-thesis-versions";
 import { listAeCoverageReviewRows } from "@/lib/dfm/db/repositories/coverage-review";
 import { getSyncCursor } from "@/lib/dfm/db/repositories/sync-cursors";
+import { getDeliveryJobIntegrityByRunId } from "@/lib/dfm/db/repositories/delivery-jobs";
 import { loadClickupEngagementSnapshot } from "@/lib/dfm/providers/google-drive-engagement-snapshot";
 import { unwrapSupabaseResult } from "@/lib/dfm/utils/supabase";
 
@@ -494,6 +495,13 @@ export async function loadOperatorAgentPacket() {
   const currentVersionRows = unwrapSupabaseResult(currentVersions) as CurrentAeVersionRow[];
   const coverageReviewRows = unwrapSupabaseResult(coverageRows);
   const engagementSnapshotRows = asClickupActivitySnapshotRows(engagementSnapshot);
+  const dailyReceiptIntegrityResult = dailyRun
+    ? await getDeliveryJobIntegrityByRunId(dailyRun.id)
+    : null;
+  const dailyReceiptIntegrity =
+    dailyReceiptIntegrityResult && !dailyReceiptIntegrityResult.error
+      ? (dailyReceiptIntegrityResult.data as Record<string, unknown> | null)
+      : null;
 
   return buildOperatorAgentPacket({
     generatedAt: new Date().toISOString(),
@@ -515,6 +523,14 @@ export async function loadOperatorAgentPacket() {
       ),
     },
     delivery: buildDeliveryState(unwrapSupabaseResult(deliveryCounts)),
+    receiptIntegrity: dailyReceiptIntegrity
+      ? {
+          jobs: toNumber(dailyReceiptIntegrity.jobs),
+          receipts: toNumber(dailyReceiptIntegrity.receipts),
+          distinctTaskIds: toNumber(dailyReceiptIntegrity.distinct_task_ids),
+          nonSentJobs: toNumber(dailyReceiptIntegrity.non_sent),
+        }
+      : null,
     staleDeals: {
       thresholdDays: staleThresholdDays,
       clickupCount: readTotalCount(staleClickupResult.data),

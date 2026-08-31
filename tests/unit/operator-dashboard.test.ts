@@ -39,6 +39,16 @@ test("buildOperatorDashboardViewModel includes stale-deal counts and samples", (
       outstanding: 0,
       latestDailyDeliveryMode: "inline",
     },
+    receiptState: {
+      runId: null,
+      jobs: 0,
+      receipts: 0,
+      distinctTaskIds: 0,
+      nonSentJobs: 0,
+      parityConfirmed: false,
+      status: "unavailable",
+      expectedBehavior: "Receipt parity cannot be checked until a daily run exists.",
+    },
     staleDealState: {
       thresholdDays: 90,
       clickupCount: 3,

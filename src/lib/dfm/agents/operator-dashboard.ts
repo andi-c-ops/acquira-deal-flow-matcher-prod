@@ -148,11 +148,20 @@ function readLatestDeliveryMode(packet: OperatorAgentPacket) {
 }
 
 function buildStatusLabel(packet: OperatorAgentPacket) {
-  if (packet.emailState.status === "failed" || packet.deliveryState.failedTerminal > 0) {
+  if (
+    packet.emailState.status === "failed" ||
+    packet.deliveryState.failedTerminal > 0 ||
+    packet.receiptState.status === "mismatch"
+  ) {
     return "Action needed";
   }
 
-  if (!packet.cursorState.cursorAdvanceAllowed || packet.deliveryState.outstanding > 0) {
+  if (
+    !packet.cursorState.cursorAdvanceAllowed ||
+    packet.deliveryState.outstanding > 0 ||
+    packet.receiptState.status === "unavailable" ||
+    packet.receiptState.status === "pending"
+  ) {
     return "Action needed";
   }
 
@@ -184,10 +193,13 @@ function buildRunControl(packet: OperatorAgentPacket): OperatorDashboardViewMode
   const runStatus = packet.latestRuns.daily?.status ?? "missing";
   const runProblem = runStatus !== "succeeded";
   const deliveryProblem = packet.deliveryState.failedTerminal > 0 || packet.deliveryState.outstanding > 0;
+  const receiptProblem = !packet.receiptState.parityConfirmed;
   const cursorProblem = !packet.cursorState.cursorAdvanceAllowed;
 
   const blocker = emailFailed
     ? packet.emailState.lastError ?? "The daily report could not be sent."
+    : packet.receiptState.status === "mismatch"
+      ? `${packet.receiptState.receipts} receipts exist for ${packet.receiptState.jobs} delivery jobs.`
     : packet.deliveryState.failedTerminal > 0
       ? `${packet.deliveryState.failedTerminal} ClickUp delivery job(s) failed.`
     : packet.deliveryState.outstanding > 0
@@ -198,12 +210,14 @@ function buildRunControl(packet: OperatorAgentPacket): OperatorDashboardViewMode
           ? "Today’s daily run has not completed successfully."
           : cursorProblem
             ? "The Airtable cursor is safely parked until the run can complete."
-            : "Today’s scheduled workflow completed with a clear delivery queue.";
+            : receiptProblem
+              ? packet.receiptState.expectedBehavior
+              : "Today’s scheduled workflow completed with a clear delivery queue and verified receipts.";
 
   return {
-    label: emailFailed || emailUnverified || runProblem || deliveryProblem || cursorProblem ? "Attention required" : "Today is complete",
+    label: emailFailed || emailUnverified || runProblem || deliveryProblem || cursorProblem || receiptProblem ? "Attention required" : "Today is complete",
     detail: blocker,
-    tone: emailFailed || packet.deliveryState.failedTerminal > 0 ? "danger" : emailUnverified || runProblem || deliveryProblem || cursorProblem ? "warning" : "good",
+    tone: emailFailed || packet.deliveryState.failedTerminal > 0 || packet.receiptState.status === "mismatch" ? "danger" : emailUnverified || runProblem || deliveryProblem || cursorProblem || receiptProblem ? "warning" : "good",
     checks: [
       {
         label: "9:30 AM daily run",
@@ -230,6 +244,22 @@ function buildRunControl(packet: OperatorAgentPacket): OperatorDashboardViewMode
         value: packet.deliveryState.outstanding > 0 ? `${packet.deliveryState.outstanding} open` : "Clear",
         detail: `${packet.deliveryState.sent} sent, ${packet.deliveryState.failedTerminal} terminal failure(s).`,
         tone: packet.deliveryState.failedTerminal > 0 ? "danger" : packet.deliveryState.outstanding > 0 ? "warning" : "good",
+      },
+      {
+        label: "Delivery receipts",
+        value:
+          packet.receiptState.status === "not_required"
+            ? "Not required"
+            : packet.receiptState.parityConfirmed
+              ? `${packet.receiptState.receipts}/${packet.receiptState.jobs} verified`
+              : `${packet.receiptState.receipts}/${packet.receiptState.jobs}`,
+        detail: packet.receiptState.expectedBehavior,
+        tone:
+          packet.receiptState.status === "mismatch"
+            ? "danger"
+            : packet.receiptState.parityConfirmed
+              ? "good"
+              : "warning",
       },
       {
         label: "Next scheduled checks",
@@ -274,6 +304,26 @@ function buildAlerts(packet: OperatorAgentPacket) {
     alerts.push({
       title: "Delivery queue is clear",
       detail: "No delivery jobs are waiting in the queue right now.",
+      tone: "good",
+    });
+  }
+
+  if (packet.receiptState.status === "mismatch") {
+    alerts.push({
+      title: "Delivery receipt mismatch detected",
+      detail: packet.receiptState.expectedBehavior,
+      tone: "danger",
+    });
+  } else if (packet.receiptState.status === "unavailable") {
+    alerts.push({
+      title: "Delivery receipt evidence unavailable",
+      detail: packet.receiptState.expectedBehavior,
+      tone: "warning",
+    });
+  } else if (packet.receiptState.status === "verified") {
+    alerts.push({
+      title: "Delivery receipts verified",
+      detail: `${packet.receiptState.receipts} receipts match ${packet.receiptState.jobs} delivery jobs and ${packet.receiptState.distinctTaskIds} distinct ClickUp tasks.`,
       tone: "good",
     });
   }

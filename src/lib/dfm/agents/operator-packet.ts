@@ -42,6 +42,13 @@ export type OperatorPacketDeliveryStateInput = {
   total: number;
 };
 
+export type OperatorPacketReceiptIntegrityInput = {
+  jobs: number;
+  receipts: number;
+  distinctTaskIds: number;
+  nonSentJobs: number;
+};
+
 export type OperatorPacketStaleDeal = {
   label: string;
   detail: string;
@@ -109,6 +116,7 @@ export type BuildOperatorAgentPacketInput = {
     googleNewAeSubmission: OperatorPacketCursor | null;
   };
   delivery: OperatorPacketDeliveryStateInput;
+  receiptIntegrity: OperatorPacketReceiptIntegrityInput | null;
   staleDeals: OperatorPacketStaleDealsInput;
   coverageReview: OperatorPacketCoverageReviewInput;
 };
@@ -139,6 +147,12 @@ export type OperatorAgentPacket = {
   deliveryState: OperatorPacketDeliveryStateInput & {
     outstanding: number;
     latestDailyDeliveryMode: string | null;
+  };
+  receiptState: OperatorPacketReceiptIntegrityInput & {
+    runId: string | null;
+    parityConfirmed: boolean;
+    status: "verified" | "not_required" | "pending" | "mismatch" | "unavailable";
+    expectedBehavior: string;
   };
   staleDealState: OperatorPacketStaleDealsInput;
   coverageReview: OperatorPacketCoverageReviewInput;
@@ -300,6 +314,74 @@ function deriveEmailState(daily: OperatorPacketRun | null) {
   };
 }
 
+function deriveReceiptState(
+  daily: OperatorPacketRun | null,
+  integrity: OperatorPacketReceiptIntegrityInput | null,
+): OperatorAgentPacket["receiptState"] {
+  if (!daily) {
+    return {
+      runId: null,
+      jobs: 0,
+      receipts: 0,
+      distinctTaskIds: 0,
+      nonSentJobs: 0,
+      parityConfirmed: false,
+      status: "unavailable",
+      expectedBehavior: "Receipt parity cannot be checked until a daily run exists.",
+    };
+  }
+
+  if (!integrity) {
+    return {
+      runId: daily.id,
+      jobs: 0,
+      receipts: 0,
+      distinctTaskIds: 0,
+      nonSentJobs: 0,
+      parityConfirmed: false,
+      status: "unavailable",
+      expectedBehavior: "Treat the run as unverified until job-to-receipt integrity is available.",
+    };
+  }
+
+  const parityConfirmed =
+    integrity.jobs === integrity.receipts &&
+    integrity.receipts === integrity.distinctTaskIds &&
+    integrity.nonSentJobs === 0;
+
+  if (integrity.jobs === 0 && parityConfirmed) {
+    return {
+      runId: daily.id,
+      ...integrity,
+      parityConfirmed: true,
+      status: "not_required",
+      expectedBehavior: "No delivery jobs were created, so no delivery receipts are required.",
+    };
+  }
+
+  if (parityConfirmed) {
+    return {
+      runId: daily.id,
+      ...integrity,
+      parityConfirmed: true,
+      status: "verified",
+      expectedBehavior: "Every delivery job has one distinct ClickUp receipt and no job remains unsent.",
+    };
+  }
+
+  const stillRunning = ["queued", "running", "partial"].includes(daily.status);
+
+  return {
+    runId: daily.id,
+    ...integrity,
+    parityConfirmed: false,
+    status: stillRunning ? "pending" : "mismatch",
+    expectedBehavior: stillRunning
+      ? "Keep the run open until every delivery job has one distinct ClickUp receipt."
+      : "Do not close the run as fully healthy until job, receipt, and distinct task counts match with no unsent jobs.",
+  };
+}
+
 function readLatestDailyDeliveryMode(daily: OperatorPacketRun | null) {
   if (!daily) {
     return null;
@@ -324,6 +406,7 @@ export function buildOperatorAgentPacket(
     input.cursors.googleNewAeSubmission,
   );
   const emailState = deriveEmailState(input.latestRuns.daily);
+  const receiptState = deriveReceiptState(input.latestRuns.daily, input.receiptIntegrity);
 
   return {
     workflowContext: {
@@ -344,6 +427,7 @@ export function buildOperatorAgentPacket(
         input.delivery.pending + input.delivery.processing + input.delivery.retryScheduled,
       latestDailyDeliveryMode: readLatestDailyDeliveryMode(input.latestRuns.daily),
     },
+    receiptState,
     staleDealState: input.staleDeals,
     coverageReview: input.coverageReview,
     emailState,
