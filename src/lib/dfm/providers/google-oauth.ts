@@ -160,20 +160,3 @@ export async function getGoogleSheetsAccessToken(): Promise<string> {
     tokenInlineJson: env.GOOGLE_SHEETS_TOKEN_JSON,
   });
 }
-
-export async function getGoogleDriveAccessToken(): Promise<string> {
-  const env = getEnv();
-  if (!env.GOOGLE_DRIVE_TOKEN_FILE && !env.GOOGLE_DRIVE_TOKEN_JSON) {
-    throw new Error(
-      "Either GOOGLE_DRIVE_TOKEN_FILE or GOOGLE_DRIVE_TOKEN_JSON must be configured",
-    );
-  }
-  return getAccessTokenFromSource({
-    tokenFilePath: env.GOOGLE_DRIVE_TOKEN_FILE,
-    tokenInlineJson: env.GOOGLE_DRIVE_TOKEN_JSON,
-  }, {
-    clientFilePath: env.GOOGLE_DRIVE_OAUTH_CLIENT_FILE,
-    clientInlineJson: env.GOOGLE_DRIVE_OAUTH_CLIENT_JSON,
-    label: "GOOGLE_DRIVE_OAUTH_CLIENT source",
-  });
-}

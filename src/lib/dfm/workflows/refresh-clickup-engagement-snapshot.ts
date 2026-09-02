@@ -1,5 +1,5 @@
 import { listActiveAeTheses } from "@/lib/dfm/db/repositories/ae-theses";
-import { saveClickupEngagementSnapshot } from "@/lib/dfm/providers/google-drive-engagement-snapshot";
+import { saveClickupEngagementSnapshot } from "@/lib/dfm/db/repositories/clickup-engagement-snapshot";
 import { listLiveClickupEngagementTasks } from "@/lib/dfm/providers/clickup-stale-review";
 import { logInfo } from "@/lib/dfm/observability/logger";
 import { unwrapSupabaseResult } from "@/lib/dfm/utils/supabase";
@@ -64,7 +64,7 @@ export async function refreshClickupEngagementSnapshotWorkflow() {
 
   logInfo("ClickUp engagement snapshot saved", {
     snapshotsSaved: snapshotRows.length,
-    snapshotFileCreated: saved.created,
+    snapshotRecordCreated: saved.created,
     observedAt,
   });
 
@@ -75,6 +75,6 @@ export async function refreshClickupEngagementSnapshotWorkflow() {
     recentTasksObserved: tasks.length,
     snapshotsSaved: snapshotRows.length,
     observedAt,
-    snapshotFileCreated: saved.created,
+    snapshotRecordCreated: saved.created,
   };
 }

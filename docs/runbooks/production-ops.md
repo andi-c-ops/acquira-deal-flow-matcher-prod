@@ -129,26 +129,12 @@ Current Strong-only exception:
 |---|---|
 | Nephtalie pierre | Send only Strong matches to ClickUp |
 
-## Google Drive Engagement Snapshot
+## ClickUp Engagement Snapshot
 
-The weekly AE Deal Flow Agent reads a small Google Drive JSON file for recent ClickUp Deals-list activity. This is monitoring data only. It does not participate in daily matching, ClickUp delivery, job dedupe, receipts, run logs, or Airtable cursor advancement.
+The weekly AE Deal Flow Agent reads recent ClickUp Deals-list activity from the existing private Supabase `sync_cursors` store under the dedicated key `clickup_engagement_snapshot_v1`. This monitoring record does not participate in daily matching, ClickUp delivery, job dedupe, receipts, run logs, or Airtable cursor advancement.
 
-Required Vercel production environment variables:
+The six-hour snapshot refresh uses the same production database connection as the rest of the Deal Flow Matcher. It requires no Google Drive credential, personal Google authorization, or 1Password access. No additional Vercel environment variable is required.
 
-- `GOOGLE_DRIVE_SNAPSHOT_FOLDER_ID`: `1TKz24roAajp-pqgDFxMq6SARGSt1CWuL`
-- `GOOGLE_DRIVE_TOKEN_JSON`: OAuth token JSON with the `https://www.googleapis.com/auth/drive.file` scope
-- `GOOGLE_DRIVE_OAUTH_CLIENT_JSON`: the matching installed OAuth client JSON used to refresh that Drive token
+If the snapshot record is absent, malformed, stale, or temporarily unreadable, the operator packet remains available and labels ClickUp engagement as unknown. It must never infer inactivity from a missing snapshot.
 
-The scheduled snapshot creates and then updates a private file named `dfm-clickup-engagement-snapshot.json` in the configured folder. The operator packet limits its Drive read to five seconds. If the file, credential, or Drive API is unavailable, the packet remains available and labels ClickUp engagement as unknown. It must never infer inactivity from a missing snapshot.
-
-One-time authorization:
-
-1. Use a Google OAuth client configured as an installed application with `http://localhost:8787` available as its local callback.
-2. Run `npm run authorize-google-drive` with `GOOGLE_OAUTH_CLIENT_FILE` pointing to that client JSON and `GOOGLE_DRIVE_TOKEN_OUTPUT_FILE` pointing to a private file under the CompanyOS `config` folder.
-3. Open the printed Google authorization link while signed in to the Acquira Google account that owns the snapshot folder.
-4. Approve only the Google Drive `drive.file` permission.
-5. Save the generated token JSON in 1Password, then add it to Vercel as `GOOGLE_DRIVE_TOKEN_JSON`.
-
-Do not commit the generated token file or paste its contents into chat, documentation, or source control.
-
-To put it another way, Google Drive stores only a small weekly-review aid. Supabase remains the authoritative persistence layer for the core daily Deal Flow Matcher workflow.
+To put it another way, the snapshot is runtime monitoring state stored beside the workflow's existing private data. Supabase remains the authoritative persistence layer, and the agent no longer needs a separate Google credential path.

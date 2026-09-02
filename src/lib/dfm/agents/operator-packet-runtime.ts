@@ -9,7 +9,7 @@ import { listCurrentAeThesisVersions } from "@/lib/dfm/db/repositories/ae-thesis
 import { listAeCoverageReviewRows } from "@/lib/dfm/db/repositories/coverage-review";
 import { getSyncCursor } from "@/lib/dfm/db/repositories/sync-cursors";
 import { getDeliveryJobIntegrityByRunId } from "@/lib/dfm/db/repositories/delivery-jobs";
-import { loadClickupEngagementSnapshot } from "@/lib/dfm/providers/google-drive-engagement-snapshot";
+import { loadClickupEngagementSnapshot } from "@/lib/dfm/db/repositories/clickup-engagement-snapshot";
 import { unwrapSupabaseResult } from "@/lib/dfm/utils/supabase";
 
 import {
