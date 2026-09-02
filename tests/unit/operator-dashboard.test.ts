@@ -141,4 +141,17 @@ test("buildOperatorDashboardViewModel includes stale-deal counts and samples", (
     view.archiveCandidates.clickupCandidates[0]?.detail,
     "Candidate for manual ClickUp archive review only.",
   );
+
+  packet.emailState = {
+    expected: true,
+    status: "sent",
+    subjectLinePreview: "Deal Flow Report | Sep 2",
+    lastError: null,
+  };
+  const sentView = buildOperatorDashboardViewModel(packet);
+  assert.equal(sentView.hero.quickFacts.find((fact) => fact.label === "Report")?.value, "Sent");
+
+  packet.emailState.status = "not_sent_yet";
+  const pendingView = buildOperatorDashboardViewModel(packet);
+  assert.equal(pendingView.hero.quickFacts.find((fact) => fact.label === "Report")?.value, "Pending");
 });

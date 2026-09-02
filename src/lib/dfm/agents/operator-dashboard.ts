@@ -404,12 +404,7 @@ export function buildOperatorDashboardViewModel(
         },
         {
           label: "Report",
-          value:
-            packet.emailState.status === "sent_or_attempted"
-              ? "Sent or attempted"
-              : packet.emailState.status === "not_sent_due_to_failure"
-                ? "Blocked by failure"
-                : "Not sent yet",
+          value: emailLabel(packet),
         },
       ],
     },
