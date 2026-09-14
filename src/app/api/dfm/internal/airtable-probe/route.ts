@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { hasOperatorSession } from "@/lib/dfm/auth/operator-session";
 import { verifyInternalRequest } from "@/lib/dfm/auth/verify-internal-request";
 import { probeAirtableCredential } from "@/lib/dfm/providers/airtable-client";
 
@@ -14,7 +15,9 @@ function redactedJson(body: Record<string, unknown>, status: number) {
 }
 
 export async function GET(request: Request) {
-  if (!verifyInternalRequest(request)) {
+  const bearerAuthorized = verifyInternalRequest(request);
+  const sessionAuthorized = bearerAuthorized ? false : await hasOperatorSession();
+  if (!bearerAuthorized && !sessionAuthorized) {
     return redactedJson({ ok: false, error: "unauthorized" }, 401);
   }
 
