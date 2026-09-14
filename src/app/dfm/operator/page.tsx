@@ -6,6 +6,7 @@ import {
 } from "@/lib/dfm/agents/operator-packet-runtime";
 import { buildOperatorDashboardViewModel } from "@/lib/dfm/agents/operator-dashboard";
 import { hasOperatorSession } from "@/lib/dfm/auth/operator-session";
+import { probeAirtableCredential } from "@/lib/dfm/providers/airtable-client";
 
 function toneClass(tone: "good" | "warning" | "danger") {
   if (tone === "good") {
@@ -48,7 +49,7 @@ function normalizeAeName(value: string) {
 export default async function OperatorDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; dedupe?: string }>;
+  searchParams: Promise<{ error?: string; dedupe?: string; probe?: string }>;
 }) {
   const sessionOk = await hasOperatorSession();
   const params = await searchParams;
@@ -145,6 +146,79 @@ export default async function OperatorDashboardPage({
               That secret did not match the current internal DFM secret.
             </p>
           ) : null}
+        </section>
+      </main>
+    );
+  }
+
+  if (params.probe === "airtable") {
+    let probeResult: Awaited<ReturnType<typeof probeAirtableCredential>> | null = null;
+    let probeError = false;
+
+    try {
+      probeResult = await probeAirtableCredential();
+    } catch {
+      probeError = true;
+    }
+
+    const status = probeError ? "configuration_error" : probeResult?.status ?? "unreachable";
+    const healthy = probeResult?.ok === true;
+
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: "24px",
+        }}
+      >
+        <section
+          style={{
+            width: "100%",
+            maxWidth: "640px",
+            background: "linear-gradient(160deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.96) 100%)",
+            border: "1px solid var(--line)",
+            borderRadius: "28px",
+            padding: "32px",
+            boxShadow: "0 24px 60px rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          <p style={{ margin: 0, color: "var(--teal)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+            Deal Flow Matcher
+          </p>
+          <h1 style={{ margin: "10px 0 12px", fontSize: "2.1rem", lineHeight: 1.05, color: "var(--heading)", fontWeight: 900 }}>
+            Airtable credential probe
+          </h1>
+          <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.65 }}>
+            One minimal, read-only request was executed from the Vercel Production runtime. No record data, cursor, run, delivery, or report state was returned or changed.
+          </p>
+          <div
+            style={{
+              ...toneClass(healthy ? "good" : "danger"),
+              marginTop: "22px",
+              border: "1px solid",
+              borderRadius: "18px",
+              padding: "18px",
+            }}
+          >
+            <p style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: "0.78rem", fontWeight: 700 }}>
+              Result
+            </p>
+            <p style={{ margin: "8px 0 0", fontSize: "1.35rem", fontWeight: 900 }}>{status}</p>
+            <p style={{ margin: "8px 0 0", lineHeight: 1.5 }}>
+              Checked: {probeResult?.checkedAt ?? new Date().toISOString()}
+              {probeResult?.httpStatus ? ` | HTTP ${probeResult.httpStatus}` : ""}
+            </p>
+          </div>
+          <p style={{ margin: "18px 0 0", color: "var(--muted)", lineHeight: 1.55, fontSize: "0.92rem" }}>
+            The credential remained inside Vercel. This page exposes only the redacted outcome.
+          </p>
+          <p style={{ margin: "18px 0 0" }}>
+            <a href="/dfm/operator" style={{ color: "var(--accent)", fontWeight: 700 }}>
+              Return to operator dashboard
+            </a>
+          </p>
         </section>
       </main>
     );
