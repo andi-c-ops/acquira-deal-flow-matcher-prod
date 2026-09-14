@@ -26,6 +26,21 @@ export interface CountDealsInput extends FetchDealsInput {
   stopAfter?: number;
 }
 
+export type AirtableCredentialProbeResult = {
+  ok: boolean;
+  provider: "airtable";
+  status:
+    | "authenticated"
+    | "unauthorized"
+    | "forbidden"
+    | "not_found"
+    | "rate_limited"
+    | "upstream_error"
+    | "unreachable";
+  checkedAt: string;
+  httpStatus?: number;
+};
+
 interface AirtableListResponse {
   records?: Array<{
     id: string;
@@ -254,4 +269,80 @@ export async function countDealsInWindow(input: CountDealsInput): Promise<number
   } while (offset);
 
   return count;
+}
+
+/**
+ * Make exactly one minimal Airtable read using the runtime credential.
+ *
+ * This deliberately does not use a workflow or cursor window: those paths
+ * create run records and may advance operational state. The response body is
+ * discarded and no Airtable record data is returned to the caller.
+ */
+export async function probeAirtableCredential(): Promise<AirtableCredentialProbeResult> {
+  const checkedAt = new Date().toISOString();
+  const env = getEnv();
+  const url = new URL(
+    `https://api.airtable.com/v0/${env.AIRTABLE_BASE_ID}/${encodeURIComponent(env.AIRTABLE_TABLE_ID)}`,
+  );
+  url.searchParams.set("pageSize", "1");
+  url.searchParams.append("fields[]", "Title");
+  if (env.AIRTABLE_VIEW_ID) {
+    url.searchParams.set("view", env.AIRTABLE_VIEW_ID);
+  }
+
+  try {
+    const response = await fetchWithTimeout(
+      url,
+      {
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${env.AIRTABLE_API_KEY}`,
+        },
+      },
+      10_000,
+    );
+
+    // The probe only needs the status. Cancel the body so the one-page read
+    // does not retain a response stream or expose record data downstream.
+    if (response.body) {
+      await response.body.cancel().catch(() => undefined);
+    }
+
+    if (response.ok) {
+      return {
+        ok: true,
+        provider: "airtable",
+        status: "authenticated",
+        checkedAt,
+        httpStatus: response.status,
+      };
+    }
+
+    const status =
+      response.status === 401
+        ? "unauthorized"
+        : response.status === 403
+          ? "forbidden"
+          : response.status === 404
+            ? "not_found"
+            : response.status === 429
+              ? "rate_limited"
+              : "upstream_error";
+
+    return {
+      ok: false,
+      provider: "airtable",
+      status,
+      checkedAt,
+      httpStatus: response.status,
+    };
+  } catch {
+    return {
+      ok: false,
+      provider: "airtable",
+      status: "unreachable",
+      checkedAt,
+    };
+  }
 }

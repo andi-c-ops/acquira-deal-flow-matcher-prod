@@ -7,7 +7,7 @@ process.env.AIRTABLE_API_KEY ??= "test-airtable-key";
 process.env.AIRTABLE_BASE_ID ??= "appTestBase";
 process.env.AIRTABLE_TABLE_ID ??= "tblTestTable";
 
-const { fetchDealsInWindow, isTransientAirtableError } = await import(
+const { fetchDealsInWindow, isTransientAirtableError, probeAirtableCredential } = await import(
   "@/lib/dfm/providers/airtable-client"
 );
 
@@ -123,4 +123,57 @@ test("pagination shares one retry budget across pages", async () => {
   );
 
   assert.ok(calls <= 4, `expected bounded total calls, saw ${calls}`);
+});
+
+test("credential probe makes one minimal read and returns only health status", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = "";
+  let requestInit: RequestInit | undefined;
+
+  globalThis.fetch = (async (input, init) => {
+    requestUrl = String(input);
+    requestInit = init;
+    return okPage([]);
+  }) as typeof globalThis.fetch;
+
+  try {
+    const result = await probeAirtableCredential();
+    assert.deepEqual(result.ok, true);
+    assert.equal(result.status, "authenticated");
+    assert.equal(result.httpStatus, 200);
+    assert.match(requestUrl, /pageSize=1/);
+    assert.match(requestUrl, /fields%5B%5D=Title/);
+    assert.equal((requestInit?.headers as Record<string, string>).Authorization, "Bearer test-airtable-key");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("credential probe reports Airtable authorization failures without retrying", async () => {
+  const { result, calls } = await withStubbedFetch(
+    [() => Promise.resolve(new Response("unauthorized", { status: 401 }))],
+    () => probeAirtableCredential(),
+  );
+
+  assert.equal(calls, 1);
+  assert.deepEqual(result, {
+    ok: false,
+    provider: "airtable",
+    status: "unauthorized",
+    checkedAt: result.checkedAt,
+    httpStatus: 401,
+  });
+});
+
+test("credential probe reports transport failures without exposing the error", async () => {
+  const { result, calls } = await withStubbedFetch(
+    [() => Promise.reject(new Error("private transport detail"))],
+    () => probeAirtableCredential(),
+  );
+
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  assert.equal(result.provider, "airtable");
+  assert.equal(result.status, "unreachable");
+  assert.equal("error" in result, false);
 });
