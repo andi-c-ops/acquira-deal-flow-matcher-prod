@@ -14,7 +14,10 @@ import {
 } from "@/lib/dfm/db/repositories/delivery-receipts";
 import { classifyDeliveryFailure } from "@/lib/dfm/jobs/classify-delivery-failure";
 import { logError, logInfo } from "@/lib/dfm/observability/logger";
-import { createClickupDealTask } from "@/lib/dfm/providers/clickup-client";
+import {
+  createClickupDealTask,
+  findClickupTasksByDeliveryKey,
+} from "@/lib/dfm/providers/clickup-client";
 import { sendErrorNotification } from "@/lib/dfm/providers/notification-client";
 import { unwrapSupabaseResult } from "@/lib/dfm/utils/supabase";
 import { finalizeDailyRunsWorkflow } from "@/lib/dfm/workflows/finalize-daily-runs";
@@ -154,6 +157,8 @@ export async function processClickupJobsWorkflow(
             ? unwrapSupabaseResult(await getMatchCandidateById(String(freshJob.match_candidate_id)))
             : null;
 
+        const deliveryKey = String(freshJob.dedupe_key);
+        const taskName = `[${candidate ? String(candidate.match_quality) : "Moderate"}] ${String(deal.business_name)}`;
         const description = buildClickupDealDescription({
           aeName: String(ae.ae_name),
           dealName: String(deal.business_name),
@@ -167,23 +172,46 @@ export async function processClickupJobsWorkflow(
           listingUrl: typeof deal.listing_url === "string" ? deal.listing_url : null,
         });
 
-        const task = await createClickupDealTask({
-          aeName: String(ae.ae_name),
-          dealName: String(deal.business_name),
-          matchQuality: candidate ? String(candidate.match_quality) : "Moderate",
-          scorePct: candidate ? Number(candidate.score_pct) : 0,
-          description,
+        const existingTasks = await findClickupTasksByDeliveryKey({
           clickupListId: String(job.clickup_list_id),
-          businessDescription: typeof deal.description === "string" ? deal.description : null,
-          cashFlow: coerceNumericValue(deal.ebitda),
-          dealLink: typeof deal.listing_url === "string" ? deal.listing_url : null,
-          industry: typeof deal.industry === "string" ? deal.industry : null,
-          location: typeof deal.location === "string" ? deal.location : null,
-          multiple: coerceNumericValue(deal.multiple),
-          purchasePrice: coerceNumericValue(deal.price),
-          state: typeof deal.state === "string" ? deal.state : null,
-          dryRun: input.dryRun,
+          taskName,
+          deliveryKey,
         });
+
+        if (existingTasks.length > 1) {
+          throw new Error(
+            `ClickUp delivery is ambiguous for job ${jobId}: ${existingTasks.length} tasks carry the same DFM delivery key`,
+          );
+        }
+
+        const task = existingTasks[0]
+          ? {
+              taskId: existingTasks[0].taskId,
+              taskUrl: existingTasks[0].taskUrl,
+              providerResponse: {
+                ...existingTasks[0].providerResponse,
+                reconciledExistingTask: true,
+                reconciliationReason: "matched DFM delivery key",
+              },
+            }
+          : await createClickupDealTask({
+              aeName: String(ae.ae_name),
+              dealName: String(deal.business_name),
+              matchQuality: candidate ? String(candidate.match_quality) : "Moderate",
+              scorePct: candidate ? Number(candidate.score_pct) : 0,
+              description,
+              clickupListId: String(job.clickup_list_id),
+              businessDescription: typeof deal.description === "string" ? deal.description : null,
+              cashFlow: coerceNumericValue(deal.ebitda),
+              dealLink: typeof deal.listing_url === "string" ? deal.listing_url : null,
+              industry: typeof deal.industry === "string" ? deal.industry : null,
+              location: typeof deal.location === "string" ? deal.location : null,
+              multiple: coerceNumericValue(deal.multiple),
+              purchasePrice: coerceNumericValue(deal.price),
+              state: typeof deal.state === "string" ? deal.state : null,
+              deliveryKey,
+              dryRun: input.dryRun,
+            });
 
         unwrapSupabaseResult(
           await insertDeliveryReceipt({

@@ -1,5 +1,6 @@
 import { getEnv } from "@/lib/dfm/config/env";
 import { logError } from "@/lib/dfm/observability/logger";
+import { fetchWithTimeout } from "@/lib/dfm/utils/fetch";
 
 export interface CreateClickupDealTaskInput {
   aeName: string;
@@ -16,6 +17,7 @@ export interface CreateClickupDealTaskInput {
   multiple?: number | null;
   purchasePrice?: number | null;
   state?: string | null;
+  deliveryKey?: string | null;
   dryRun?: boolean;
 }
 
@@ -24,6 +26,19 @@ export interface CreateClickupDealTaskResult {
   taskUrl: string;
   providerResponse: Record<string, unknown>;
 }
+
+export interface ClickupTaskDetails {
+  taskId: string;
+  taskName: string;
+  taskUrl: string;
+  listId: string | null;
+  description: string | null;
+  providerResponse: Record<string, unknown>;
+}
+
+const CLICKUP_REQUEST_TIMEOUT_MS = 30_000;
+const CLICKUP_MAX_RATE_LIMIT_RETRIES = 3;
+const DFM_DELIVERY_MARKER = "DFM Delivery Key:";
 
 const DEAL_CUSTOM_FIELD_IDS = {
   businessDescription: "a1ee8056-21a3-4b25-b4cc-34885ef2f60c",
@@ -48,6 +63,137 @@ function buildCustomFields(input: CreateClickupDealTaskInput) {
     input.state ? { id: DEAL_CUSTOM_FIELD_IDS.state, value: input.state } : null,
     input.aeName ? { id: DEAL_CUSTOM_FIELD_IDS.aeName, value: input.aeName } : null,
   ].filter(Boolean);
+}
+
+export function buildDfmDeliveryMarker(deliveryKey: string) {
+  return `${DFM_DELIVERY_MARKER} ${deliveryKey}`;
+}
+
+export function hasDfmDeliveryMarker(description: string | null | undefined, deliveryKey: string) {
+  return typeof description === "string" && description.includes(buildDfmDeliveryMarker(deliveryKey));
+}
+
+function clickupTaskUrl(taskId: string, url: unknown) {
+  return typeof url === "string" && url.trim().length > 0
+    ? url
+    : `https://app.clickup.com/t/${taskId}`;
+}
+
+function asClickupTaskDetails(value: Record<string, unknown>): ClickupTaskDetails | null {
+  const taskId = typeof value.id === "string" ? value.id : null;
+  if (!taskId) {
+    return null;
+  }
+
+  const list = value.list && typeof value.list === "object" && !Array.isArray(value.list)
+    ? (value.list as Record<string, unknown>)
+    : null;
+
+  return {
+    taskId,
+    taskName: typeof value.name === "string" ? value.name : "",
+    taskUrl: clickupTaskUrl(taskId, value.url),
+    listId: typeof list?.id === "string" ? list.id : null,
+    description: typeof value.description === "string" ? value.description : null,
+    providerResponse: value,
+  };
+}
+
+async function clickupRequest(input: string | URL, init?: RequestInit) {
+  for (let attempt = 0; attempt <= CLICKUP_MAX_RATE_LIMIT_RETRIES; attempt += 1) {
+    const response = await fetchWithTimeout(input, init, CLICKUP_REQUEST_TIMEOUT_MS);
+    if (response.ok) {
+      return response;
+    }
+
+    if (response.status === 429 && attempt < CLICKUP_MAX_RATE_LIMIT_RETRIES) {
+      const retryAfterSeconds = Number(response.headers.get("retry-after"));
+      const delayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds * 1_000
+        : (attempt + 1) * 1_000;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    const details = await response.text().catch(() => "");
+    throw new Error(
+      `ClickUp request failed with status ${response.status}${details ? `: ${details}` : ""}`,
+    );
+  }
+
+  throw new Error("ClickUp request failed after retry exhaustion");
+}
+
+export async function getClickupTask(taskId: string): Promise<ClickupTaskDetails> {
+  const env = getEnv();
+  if (!env.CLICKUP_API_KEY) {
+    throw new Error("CLICKUP_API_KEY is required for ClickUp task lookup");
+  }
+
+  const response = await clickupRequest(
+    `https://api.clickup.com/api/v2/task/${encodeURIComponent(taskId)}`,
+    {
+      headers: {
+        Authorization: env.CLICKUP_API_KEY,
+      },
+    },
+  );
+  const data = (await response.json()) as Record<string, unknown>;
+  const task = asClickupTaskDetails(data);
+  if (!task) {
+    throw new Error(`ClickUp task lookup returned no task for ${taskId}`);
+  }
+
+  return task;
+}
+
+export async function findClickupTasksByDeliveryKey(input: {
+  clickupListId: string;
+  taskName: string;
+  deliveryKey: string;
+}): Promise<ClickupTaskDetails[]> {
+  const env = getEnv();
+  if (!env.CLICKUP_API_KEY) {
+    throw new Error("CLICKUP_API_KEY is required for ClickUp task lookup");
+  }
+
+  const matches: ClickupTaskDetails[] = [];
+  for (let page = 0; ; page += 1) {
+    const url = new URL(
+      `https://api.clickup.com/api/v2/list/${encodeURIComponent(input.clickupListId)}/task`,
+    );
+    url.searchParams.set("include_closed", "true");
+    url.searchParams.set("subtasks", "false");
+    url.searchParams.set("page", String(page));
+
+    const response = await clickupRequest(url, {
+      headers: {
+        Authorization: env.CLICKUP_API_KEY,
+      },
+    });
+    const data = (await response.json()) as {
+      tasks?: Array<Record<string, unknown>>;
+    };
+    const tasks = data.tasks ?? [];
+
+    for (const rawTask of tasks) {
+      const task = asClickupTaskDetails(rawTask);
+      if (
+        task &&
+        task.listId === input.clickupListId &&
+        task.taskName.trim() === input.taskName.trim() &&
+        hasDfmDeliveryMarker(task.description, input.deliveryKey)
+      ) {
+        matches.push(task);
+      }
+    }
+
+    if (tasks.length < 100) {
+      break;
+    }
+  }
+
+  return matches;
 }
 
 async function setCustomFieldValue(taskId: string, fieldId: string, value: number, apiKey: string) {
@@ -122,7 +268,12 @@ export async function createClickupDealTask(
     },
     body: JSON.stringify({
       name: `[${input.matchQuality}] ${input.dealName}`,
-      description: input.description,
+      description: [
+        input.description,
+        input.deliveryKey ? buildDfmDeliveryMarker(input.deliveryKey) : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       tags: ["deal-flow", input.matchQuality.toLowerCase()],
       custom_fields: buildCustomFields(input),
     }),
