@@ -131,15 +131,23 @@ test("buildOperatorDashboardViewModel includes stale-deal counts and samples", (
   assert.match(view.coverageReview.flaggedAes[0]?.detail ?? "", /no recent deal-task activity/);
   assert.match(view.coverageReview.flaggedAes[0]?.lastTouched ?? "", /Last task activity:/);
   assert.equal(view.staleDeals.thresholdLabel, "Deals with no activity for 90+ days");
+  assert.equal(view.staleDeals.metrics[0]?.label, "Task records with no recent update");
+  assert.equal(view.staleDeals.metrics[1]?.label, "Deal records with no recent update");
   assert.equal(view.staleDeals.metrics[0]?.value, "3");
   assert.equal(view.staleDeals.metrics[1]?.value, "7");
   assert.equal(view.staleDeals.clickupSamples[0]?.label, "AE One | Deal One");
   assert.match(view.staleDeals.basisLabel, /Task counts use recent task updates/);
+  assert.equal(view.archiveCandidates.title, "Records eligible for manual archive review");
   assert.equal(view.archiveCandidates.metrics[0]?.value, "3");
   assert.equal(view.archiveCandidates.metrics[1]?.value, "7");
+  assert.equal(view.archiveCandidates.metrics[1]?.label, "Deal records to review");
   assert.equal(
     view.archiveCandidates.clickupCandidates[0]?.detail,
     "Candidate for manual task archive review only.",
+  );
+  assert.equal(
+    view.archiveCandidates.airtableCandidates[0]?.detail,
+    "Candidate for manual deal archive review only.",
   );
 
   packet.emailState = {

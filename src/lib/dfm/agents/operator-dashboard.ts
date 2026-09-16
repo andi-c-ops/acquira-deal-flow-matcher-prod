@@ -115,8 +115,14 @@ function humanizeOperatorText(value: string) {
   return value
     .replaceAll("Airtable cursor", "new-deals checkpoint")
     .replaceAll("delivery jobs", "tasks")
+    .replaceAll("delivery job", "task")
+    .replaceAll("ClickUp receipt", "task confirmation")
     .replaceAll("receipts", "task confirmations")
-    .replaceAll("ClickUp tasks", "tasks");
+    .replaceAll("receipt", "task confirmation")
+    .replaceAll("cursor end timestamp", "new-deals checkpoint time")
+    .replaceAll("cursor", "checkpoint")
+    .replaceAll("ClickUp tasks", "tasks")
+    .replaceAll("jobs", "tasks");
 }
 
 function buildSummaryLine(packet: OperatorAgentPacket) {
@@ -338,7 +344,7 @@ function buildAlerts(packet: OperatorAgentPacket) {
   if (packet.receiptState.status === "mismatch") {
     alerts.push({
       title: "Task confirmations do not match",
-      detail: packet.receiptState.expectedBehavior.replaceAll("delivery jobs", "tasks").replaceAll("receipts", "confirmations"),
+      detail: humanizeOperatorText(packet.receiptState.expectedBehavior),
       tone: "danger",
     });
   } else if (packet.receiptState.status === "unavailable") {
@@ -515,11 +521,11 @@ export function buildOperatorDashboardViewModel(
             : "The review basis is not available.",
       metrics: [
         {
-          label: "Deals with no recent task update",
+          label: "Task records with no recent update",
           value: String(packet.staleDealState.clickupCount),
         },
         {
-          label: "Deals with no recent source update",
+          label: "Deal records with no recent update",
           value: String(packet.staleDealState.airtableCount),
         },
       ],
@@ -537,7 +543,7 @@ export function buildOperatorDashboardViewModel(
       })),
     },
     archiveCandidates: {
-      title: "Records to review before archiving",
+      title: "Records eligible for manual archive review",
       ruleLabel:
         "Read-only list of records with no recorded activity for 90+ days. Nothing is archived or deleted without manual approval.",
       metrics: [
@@ -546,7 +552,7 @@ export function buildOperatorDashboardViewModel(
           value: String(packet.staleDealState.clickupCount),
         },
         {
-          label: "Source records to review",
+          label: "Deal records to review",
           value: String(packet.staleDealState.airtableCount),
         },
       ],
@@ -558,7 +564,7 @@ export function buildOperatorDashboardViewModel(
       })),
       airtableCandidates: packet.staleDealState.airtableSamples.map((item) => ({
         label: item.label,
-        detail: "Candidate for manual source archive review only.",
+        detail: "Candidate for manual deal archive review only.",
         lastTouched: formatTimestamp(item.lastTouchedAt),
         link: item.link,
       })),

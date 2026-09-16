@@ -32,7 +32,7 @@ export function ArchiveCandidateReview({ view }: { view: ArchiveCandidateView })
   const filters: Array<{ key: FilterKey; label: string }> = [
     { key: "both", label: "Both" },
     { key: "clickup", label: "Task records" },
-    { key: "airtable", label: "Source records" },
+    { key: "airtable", label: "Deal records" },
   ];
 
   const showClickup = filter === "both" || filter === "clickup";
@@ -98,8 +98,8 @@ export function ArchiveCandidateReview({ view }: { view: ArchiveCandidateView })
   async function handleCopySummary() {
     const lines: string[] = [];
 
-    lines.push(`Records to review before archiving`);
-    lines.push(`Filter: ${filter === "both" ? "Both" : filter === "clickup" ? "Task records" : "Source records"}`);
+    lines.push(`Archive candidates`);
+    lines.push(`Filter: ${filter === "both" ? "Both" : filter === "clickup" ? "Task records" : "Deal records"}`);
     lines.push(view.ruleLabel);
     lines.push("");
 
@@ -121,7 +121,7 @@ export function ArchiveCandidateReview({ view }: { view: ArchiveCandidateView })
     }
 
     if (showAirtable) {
-      lines.push(`Source records to review: ${view.metrics[1]?.value ?? "0"}`);
+      lines.push(`Deal records to review: ${view.metrics[1]?.value ?? "0"}`);
       if (view.airtableCandidates.length === 0) {
         lines.push(`- None in current review window`);
       } else {
@@ -173,7 +173,7 @@ export function ArchiveCandidateReview({ view }: { view: ArchiveCandidateView })
               fontWeight: 700,
             }}
           >
-            Records to review
+            Archive candidates
           </p>
           <h2 style={{ margin: "8px 0 8px", fontSize: "1.42rem", lineHeight: 1.02 }}>
             {view.title}
@@ -189,32 +189,6 @@ export function ArchiveCandidateReview({ view }: { view: ArchiveCandidateView })
           >
             {view.ruleLabel}
           </p>
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gap: "10px",
-            gridTemplateColumns: "repeat(2, minmax(160px, 1fr))",
-          }}
-        >
-          {view.metrics.map((metric) => (
-            <article
-              key={metric.label}
-              style={{
-                background: "#1d2a35",
-                border: "1px solid rgba(70,149,192,0.28)",
-                borderRadius: "18px",
-                padding: "14px",
-                minWidth: "160px",
-                boxShadow: "0 18px 40px rgba(15, 23, 42, 0.14)",
-              }}
-            >
-              <p style={{ margin: 0, color: "var(--brand-blue-soft)", fontSize: "0.82rem" }}>{metric.label}</p>
-              <h3 style={{ margin: "8px 0 0", fontSize: "1.4rem", color: "#F8FAFC" }}>
-                {metric.value}
-              </h3>
-            </article>
-          ))}
         </div>
       </div>
 
@@ -245,6 +219,7 @@ export function ArchiveCandidateReview({ view }: { view: ArchiveCandidateView })
                 key={item.key}
                 type="button"
                 onClick={() => setFilter(item.key)}
+                aria-pressed={active}
                 style={{
                   border: "none",
                   borderRadius: "999px",
@@ -307,11 +282,11 @@ export function ArchiveCandidateReview({ view }: { view: ArchiveCandidateView })
         {showClickup ? (
           <ExpandableReviewCard
             title="Task records to review"
-            countLabel="Task review queue"
+            countLabel="Task records needing review"
             countValue={view.metrics[0]?.value ?? "0"}
             emptyMessage="No task records need review in the report window."
             items={view.clickupCandidates}
-            openLabel="Task examples"
+            openLabel="task records"
             linkLabel="Open task"
             accent="teal"
           />
@@ -319,13 +294,13 @@ export function ArchiveCandidateReview({ view }: { view: ArchiveCandidateView })
 
         {showAirtable ? (
           <ExpandableReviewCard
-            title="Source records to review"
-            countLabel="Source review queue"
+            title="Deal records to review"
+            countLabel="Deal records needing review"
             countValue={view.metrics[1]?.value ?? "0"}
-            emptyMessage="No source records need review in the report window."
+            emptyMessage="No deal records need review in the report window."
             items={view.airtableCandidates}
-            openLabel="Source examples"
-            linkLabel="Open listing"
+            openLabel="deal records"
+            linkLabel="Open deal record"
             accent="blue"
           />
         ) : null}

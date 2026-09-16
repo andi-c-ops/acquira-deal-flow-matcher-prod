@@ -263,7 +263,7 @@ export default async function OperatorDashboardPage({
     { label: "High-confidence matches", value: summaryCount(latestDailySummary, "totalStrongMatches") },
     { label: "Possible matches", value: summaryCount(latestDailySummary, "totalModerateMatches") },
     { label: "Entrepreneurs matched", value: summaryCount(latestDailySummary, "aesWithMatches") },
-    { label: "ClickUp tasks prepared", value: summaryCount(latestDailySummary, "deliveryJobsCreatedOrEligible") },
+    { label: "Tasks prepared", value: summaryCount(latestDailySummary, "deliveryJobsCreatedOrEligible") },
   ];
 
   return (
@@ -726,50 +726,33 @@ export default async function OperatorDashboardPage({
         <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", flexWrap: "wrap", alignItems: "start" }}>
           <div>
             <p style={{ margin: 0, color: "var(--teal)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-              Deals needing review
+              Activity review
             </p>
             <h2 style={{ margin: "8px 0 8px", fontSize: "1.38rem", lineHeight: 1.05 }}>{view.staleDeals.thresholdLabel}</h2>
             <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.55, fontSize: "0.94rem", maxWidth: "720px" }}>{view.staleDeals.basisLabel}</p>
-          </div>
-          <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(160px, 1fr))" }}>
-            {view.staleDeals.metrics.map((metric) => (
-              <article
-                key={metric.label}
-                style={{
-                  background: "linear-gradient(160deg, rgba(255,255,255,0.98) 0%, rgba(239,246,255,0.98) 100%)",
-                  border: "1px solid var(--line)",
-                  borderRadius: "18px",
-                  padding: "14px",
-                  minWidth: "160px",
-                }}
-              >
-                <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.82rem" }}>{metric.label}</p>
-                <h3 style={{ margin: "8px 0 0", fontSize: "1.35rem" }}>{metric.value}</h3>
-              </article>
-            ))}
           </div>
         </div>
 
         <div style={{ display: "grid", gap: "16px", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
           <ExpandableReviewCard
-            title="Deals with no recent task update"
-            countLabel="Task review queue"
+            title="Task records with no recent update"
+            countLabel="Tasks needing review"
             countValue={view.staleDeals.metrics[0]?.value ?? "0"}
-            emptyMessage="No deals without a recent task update were found in the current review window."
+            emptyMessage="No task records without a recent update were found in the current review window."
             items={view.staleDeals.clickupSamples}
-            openLabel="Task examples"
+            openLabel="task records"
             linkLabel="Open task"
             accent="teal"
           />
 
           <ExpandableReviewCard
-            title="Deals with no recent source update"
-            countLabel="Source review queue"
+            title="Deal records with no recent update"
+            countLabel="Deal records needing review"
             countValue={view.staleDeals.metrics[1]?.value ?? "0"}
-            emptyMessage="No deals without a recent source update were found in the current review window."
+            emptyMessage="No deal records without a recent update were found in the current review window."
             items={view.staleDeals.airtableSamples}
-            openLabel="Source examples"
-            linkLabel="Open source record"
+            openLabel="deal records"
+            linkLabel="Open deal record"
             accent="blue"
           />
         </div>

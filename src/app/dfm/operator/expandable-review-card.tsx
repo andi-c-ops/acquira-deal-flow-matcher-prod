@@ -56,6 +56,8 @@ export function ExpandableReviewCard({
   const [openItems, setOpenItems] = useState<Record<string, boolean>>({});
   const tokens = accentTokens(accent);
 
+  const disclosureId = `review-details-${title.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
   function itemKey(item: ExpandableReviewItem) {
     return `${item.label}-${item.lastTouched}`;
   }
@@ -127,18 +129,20 @@ export function ExpandableReviewCard({
             items.map((item) => {
               const key = itemKey(item);
               const itemOpen = openItems[key] === true;
+              const itemDetailsId = `${disclosureId}-${key.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
               return (
                 <article key={key} className="review-item-row">
                   <button
                     type="button"
                     className="review-item-toggle"
                     aria-expanded={itemOpen}
+                    aria-controls={itemDetailsId}
                     onClick={() => setOpenItems((current) => ({ ...current, [key]: !itemOpen }))}
                   >
                     <span className="review-item-label">{item.label}</span>
                     <span className="review-item-icon" aria-hidden="true">{itemOpen ? "−" : "+"}</span>
                   </button>
-                  {itemOpen ? renderItemDetails(item) : null}
+                  {itemOpen ? <div id={itemDetailsId}>{renderItemDetails(item)}</div> : null}
                 </article>
               );
             })
@@ -147,49 +151,51 @@ export function ExpandableReviewCard({
           )}
         </div>
       ) : (
-        <>
-          <button
-            type="button"
-            onClick={() => setOpen((current) => !current)}
-            style={{
-              marginTop: "14px",
-              width: "100%",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              border: "1px solid rgba(15,23,42,0.08)",
-              borderRadius: "16px",
-              background: "rgba(255,255,255,0.84)",
-              padding: "12px 14px",
-              cursor: "pointer",
-            }}
-          >
-            <span style={{ color: "var(--heading)", fontWeight: 700, fontSize: "0.95rem" }}>
-              {open ? `Hide ${openLabel}` : `Show ${openLabel}`}
-            </span>
-            <span
-              aria-hidden="true"
+        items.length > 0 ? (
+          <>
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={disclosureId}
+              onClick={() => setOpen((current) => !current)}
               style={{
-                width: "28px",
-                height: "28px",
-                display: "grid",
-                placeItems: "center",
-                borderRadius: "999px",
-                background: "rgba(2, 6, 23, 0.94)",
-                color: "#F8FAFC",
-                fontSize: "1rem",
-                fontWeight: 800,
-                lineHeight: 1,
+                marginTop: "14px",
+                width: "100%",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                border: "1px solid rgba(15,23,42,0.08)",
+                borderRadius: "16px",
+                background: "rgba(255,255,255,0.84)",
+                padding: "12px 14px",
+                cursor: "pointer",
               }}
             >
-              {open ? "−" : "+"}
-            </span>
-          </button>
+              <span style={{ color: "var(--heading)", fontWeight: 700, fontSize: "0.95rem" }}>
+                {open ? `Hide ${openLabel}` : `View ${openLabel}`}
+              </span>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: "999px",
+                  background: "rgba(2, 6, 23, 0.94)",
+                  color: "#F8FAFC",
+                  fontSize: "1rem",
+                  fontWeight: 800,
+                  lineHeight: 1,
+                }}
+              >
+                {open ? "−" : "+"}
+              </span>
+            </button>
 
-          {open ? (
-            <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
-              {items.length > 0 ? (
-                items.map((item) => (
+            {open ? (
+              <div id={disclosureId} style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+                {items.map((item) => (
                   <div
                     key={itemKey(item)}
                     style={{
@@ -221,13 +227,13 @@ export function ExpandableReviewCard({
                       </p>
                     ) : null}
                   </div>
-                ))
-              ) : (
-                <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.92rem" }}>{emptyMessage}</p>
-              )}
-            </div>
-          ) : null}
-        </>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <p style={{ margin: "16px 0 0", color: "var(--muted)", fontSize: "0.92rem" }}>{emptyMessage}</p>
+        )
       )}
     </article>
   );
