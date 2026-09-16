@@ -111,6 +111,14 @@ function formatTimestamp(value: string | null) {
   });
 }
 
+function humanizeOperatorText(value: string) {
+  return value
+    .replaceAll("Airtable cursor", "new-deals checkpoint")
+    .replaceAll("delivery jobs", "tasks")
+    .replaceAll("receipts", "task confirmations")
+    .replaceAll("ClickUp tasks", "tasks");
+}
+
 function buildSummaryLine(packet: OperatorAgentPacket) {
   const dailySummary = packet.latestRuns.daily?.summary ?? {};
   const fetchedDeals = toNumber(dailySummary.fetchedDeals);
@@ -118,7 +126,7 @@ function buildSummaryLine(packet: OperatorAgentPacket) {
   const moderate = toNumber(dailySummary.totalModerateMatches);
   const aes = toNumber(dailySummary.aesWithMatches);
 
-  return `${fetchedDeals} deals fetched, ${strong} strong, ${moderate} moderate, ${aes} AEs matched`;
+  return `${fetchedDeals} deals reviewed, ${strong} high-confidence matches, ${moderate} possible matches, ${aes} entrepreneurs matched`;
 }
 
 function readLatestDeliveryMode(packet: OperatorAgentPacket) {
@@ -133,15 +141,15 @@ function readLatestDeliveryMode(packet: OperatorAgentPacket) {
   }
 
   if (mode === "deferred_worker") {
-    return "Deferred worker delivery";
+    return "Tasks sent in the background";
   }
 
   if (mode === "inline_strict") {
-    return "Inline strict delivery";
+    return "Tasks sent before finishing";
   }
 
   if (mode === "no_delivery_jobs") {
-    return "No delivery jobs";
+    return "No tasks to send";
   }
 
   return mode;
@@ -187,6 +195,25 @@ function runTone(status: string | undefined): AlertTone {
   return status === "succeeded" ? "good" : status === "failed" || status === "cancelled" ? "danger" : "warning";
 }
 
+function runStatusLabel(status: string | undefined) {
+  switch (status ?? "missing") {
+    case "succeeded":
+      return "Completed";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    case "running":
+      return "In progress";
+    case "queued":
+      return "Queued";
+    case "missing":
+      return "Not available";
+    default:
+      return (status ?? "Not available").replaceAll("_", " ");
+  }
+}
+
 function buildRunControl(packet: OperatorAgentPacket): OperatorDashboardViewModel["runControl"] {
   const emailFailed = packet.emailState.status === "failed";
   const emailUnverified = packet.emailState.status === "sent_or_attempted" || packet.emailState.status === "unknown";
@@ -199,20 +226,20 @@ function buildRunControl(packet: OperatorAgentPacket): OperatorDashboardViewMode
   const blocker = emailFailed
     ? packet.emailState.lastError ?? "The daily report could not be sent."
     : packet.receiptState.status === "mismatch"
-      ? `${packet.receiptState.receipts} receipts exist for ${packet.receiptState.jobs} delivery jobs.`
+      ? `${packet.receiptState.receipts} task confirmations exist for ${packet.receiptState.jobs} tasks.`
     : packet.deliveryState.failedTerminal > 0
-      ? `${packet.deliveryState.failedTerminal} ClickUp delivery job(s) failed.`
+      ? `${packet.deliveryState.failedTerminal} tasks could not be sent to ClickUp.`
     : packet.deliveryState.outstanding > 0
-        ? `${packet.deliveryState.outstanding} ClickUp delivery job(s) are still processing.`
+        ? `${packet.deliveryState.outstanding} tasks are still being sent to ClickUp.`
         : emailUnverified
-          ? "This historical run has no persisted report-email receipt, so email delivery cannot be confirmed."
+          ? "There is no saved confirmation that the report email was delivered."
         : runProblem
           ? "Today’s daily run has not completed successfully."
           : cursorProblem
-            ? "The Airtable cursor is safely parked until the run can complete."
+            ? "The new-deals checkpoint is safely paused until the run can complete."
             : receiptProblem
-              ? packet.receiptState.expectedBehavior
-              : "Today’s scheduled workflow completed with a clear delivery queue and verified receipts.";
+              ? humanizeOperatorText(packet.receiptState.expectedBehavior)
+              : "Today’s scheduled workflow completed. All task confirmations are in place.";
 
   return {
     label: emailFailed || emailUnverified || runProblem || deliveryProblem || cursorProblem || receiptProblem ? "Attention required" : "Today is complete",
@@ -221,7 +248,7 @@ function buildRunControl(packet: OperatorAgentPacket): OperatorDashboardViewMode
     checks: [
       {
         label: "9:30 AM daily run",
-        value: runStatus,
+        value: runStatusLabel(runStatus),
         detail: packet.latestRuns.daily?.createdAt ? `Started ${formatTimestamp(packet.latestRuns.daily.createdAt)}` : "No daily run record is available.",
         tone: runTone(runStatus),
       },
@@ -232,28 +259,28 @@ function buildRunControl(packet: OperatorAgentPacket): OperatorDashboardViewMode
         tone: emailTone(packet),
       },
       {
-        label: "Airtable cursor",
+        label: "New-deals checkpoint",
         value: packet.cursorState.cursorAdvanceAllowed ? "Safe" : "Parked",
         detail: packet.cursorState.airtableDailyDeals?.cursorTimestamp
-          ? `Last safe cursor: ${formatTimestamp(packet.cursorState.airtableDailyDeals.cursorTimestamp)}`
-          : "No Airtable cursor is recorded.",
+          ? `Last checkpoint: ${formatTimestamp(packet.cursorState.airtableDailyDeals.cursorTimestamp)}`
+          : "No new-deals checkpoint is recorded.",
         tone: packet.cursorState.cursorAdvanceAllowed ? "good" : "warning",
       },
       {
-        label: "ClickUp delivery",
+        label: "Tasks sent to ClickUp",
         value: packet.deliveryState.outstanding > 0 ? `${packet.deliveryState.outstanding} open` : "Clear",
-        detail: `${packet.deliveryState.sent} sent, ${packet.deliveryState.failedTerminal} terminal failure(s).`,
+        detail: `${packet.deliveryState.sent} sent, ${packet.deliveryState.failedTerminal} not delivered.`,
         tone: packet.deliveryState.failedTerminal > 0 ? "danger" : packet.deliveryState.outstanding > 0 ? "warning" : "good",
       },
       {
-        label: "Delivery receipts",
+        label: "Task confirmations",
         value:
           packet.receiptState.status === "not_required"
             ? "Not required"
             : packet.receiptState.parityConfirmed
               ? `${packet.receiptState.receipts}/${packet.receiptState.jobs} verified`
               : `${packet.receiptState.receipts}/${packet.receiptState.jobs}`,
-        detail: packet.receiptState.expectedBehavior,
+        detail: humanizeOperatorText(packet.receiptState.expectedBehavior),
         tone:
           packet.receiptState.status === "mismatch"
             ? "danger"
@@ -264,7 +291,7 @@ function buildRunControl(packet: OperatorAgentPacket): OperatorDashboardViewMode
       {
         label: "Next scheduled checks",
         value: "7:00 AM and 9:30 AM ET",
-        detail: "New thesis check at 7:00 AM. Daily deal run at 9:30 AM.",
+        detail: "New investment-focus check at 7:00 AM. Daily deal run at 9:30 AM.",
         tone: "good",
       },
     ],
@@ -276,54 +303,54 @@ function buildAlerts(packet: OperatorAgentPacket) {
 
   if (!packet.cursorState.cursorAdvanceAllowed) {
     alerts.push({
-      title: "Cursor is safely parked",
-      detail: packet.cursorState.expectedBehavior,
+      title: "New-deals checkpoint is paused",
+      detail: humanizeOperatorText(packet.cursorState.expectedBehavior),
       tone: "warning",
     });
   } else {
     alerts.push({
-      title: "Cursor can move",
-      detail: packet.cursorState.expectedBehavior,
+      title: "New-deals checkpoint can move",
+      detail: humanizeOperatorText(packet.cursorState.expectedBehavior),
       tone: "good",
     });
   }
 
   if (packet.deliveryState.outstanding > 0) {
     alerts.push({
-      title: "Delivery queue still has work",
-      detail: `${packet.deliveryState.outstanding} delivery jobs are still pending, processing, or waiting for retry.`,
+      title: "Tasks are still being sent",
+      detail: `${packet.deliveryState.outstanding} tasks are still waiting, processing, or scheduled to retry.`,
       tone: "warning",
     });
   } else if (packet.deliveryState.failedTerminal > 0) {
     alerts.push({
-      title: "Terminal delivery failures detected",
-      detail: `${packet.deliveryState.failedTerminal} delivery jobs ended in a terminal failure state.`,
+      title: "Some tasks could not be delivered",
+      detail: `${packet.deliveryState.failedTerminal} tasks could not be delivered.`,
       tone: "danger",
     });
   } else {
     alerts.push({
-      title: "Delivery queue is clear",
-      detail: "No delivery jobs are waiting in the queue right now.",
+      title: "All tasks have been sent",
+      detail: "No tasks are waiting to be sent right now.",
       tone: "good",
     });
   }
 
   if (packet.receiptState.status === "mismatch") {
     alerts.push({
-      title: "Delivery receipt mismatch detected",
-      detail: packet.receiptState.expectedBehavior,
+      title: "Task confirmations do not match",
+      detail: packet.receiptState.expectedBehavior.replaceAll("delivery jobs", "tasks").replaceAll("receipts", "confirmations"),
       tone: "danger",
     });
   } else if (packet.receiptState.status === "unavailable") {
     alerts.push({
-      title: "Delivery receipt evidence unavailable",
-      detail: packet.receiptState.expectedBehavior,
+      title: "Task confirmation evidence is unavailable",
+      detail: humanizeOperatorText(packet.receiptState.expectedBehavior),
       tone: "warning",
     });
   } else if (packet.receiptState.status === "verified") {
     alerts.push({
-      title: "Delivery receipts verified",
-      detail: `${packet.receiptState.receipts} receipts match ${packet.receiptState.jobs} delivery jobs and ${packet.receiptState.distinctTaskIds} distinct ClickUp tasks.`,
+      title: "Task confirmations verified",
+      detail: `${packet.receiptState.receipts} confirmations match ${packet.receiptState.jobs} tasks and ${packet.receiptState.distinctTaskIds} distinct ClickUp tasks.`,
       tone: "good",
     });
   }
@@ -364,16 +391,16 @@ function buildAlerts(packet: OperatorAgentPacket) {
 
   if (packet.coverageReview.underservedAeCount > 0) {
     alerts.push({
-      title: "Some AEs may be under-served",
-      detail: `${packet.coverageReview.underservedAeCount} active AEs are below the current weekly or 30-day match thresholds and should be reviewed.`,
+      title: "Some entrepreneurs may need more coverage",
+      detail: `${packet.coverageReview.underservedAeCount} active entrepreneurs are below the current weekly or 30-day match thresholds and should be reviewed.`,
       tone: "warning",
     });
   }
 
   if (packet.coverageReview.engagementSnapshot.status !== "current") {
     alerts.push({
-      title: "ClickUp engagement snapshot needs refresh",
-      detail: "Coverage and delivery counts are current, but recent ClickUp deal-work activity is unavailable until the scheduled snapshot succeeds.",
+      title: "Recent task activity needs a refresh",
+      detail: "Coverage and delivery counts are current, but recent task activity is unavailable until the scheduled check succeeds.",
       tone: "warning",
     });
   }
@@ -392,14 +419,14 @@ export function buildOperatorDashboardViewModel(
       quickFacts: [
         {
           label: "Daily run",
-          value: packet.latestRuns.daily?.status ?? "missing",
+          value: runStatusLabel(packet.latestRuns.daily?.status),
         },
         {
-          label: "Cursor",
+          label: "New-deals checkpoint",
           value: packet.cursorState.cursorAdvanceAllowed ? "Safe to advance" : "Safely parked",
         },
         {
-          label: "Delivery mode",
+          label: "Task delivery",
           value: readLatestDeliveryMode(packet),
         },
         {
@@ -411,13 +438,13 @@ export function buildOperatorDashboardViewModel(
     runControl: buildRunControl(packet),
     alerts: buildAlerts(packet),
     metrics: [
-      { label: "Pending delivery", value: String(packet.deliveryState.pending) },
-      { label: "Processing delivery", value: String(packet.deliveryState.processing) },
-      { label: "Retry scheduled", value: String(packet.deliveryState.retryScheduled) },
-      { label: "Sent jobs", value: String(packet.deliveryState.sent) },
-      { label: "Terminal failures", value: String(packet.deliveryState.failedTerminal) },
+      { label: "Tasks waiting to be sent", value: String(packet.deliveryState.pending) },
+      { label: "Tasks being sent", value: String(packet.deliveryState.processing) },
+      { label: "Tasks scheduled to try again", value: String(packet.deliveryState.retryScheduled) },
+      { label: "Tasks sent", value: String(packet.deliveryState.sent) },
+      { label: "Tasks not delivered", value: String(packet.deliveryState.failedTerminal) },
       {
-        label: "Airtable daily cursor",
+        label: "New-deals checkpoint",
         value: packet.cursorState.airtableDailyDeals?.cursorTimestamp
           ? formatTimestamp(packet.cursorState.airtableDailyDeals.cursorTimestamp)
           : "Not set",
@@ -426,33 +453,33 @@ export function buildOperatorDashboardViewModel(
     latestRuns: [
       {
         label: "Daily run",
-        status: packet.latestRuns.daily?.status ?? "missing",
+        status: runStatusLabel(packet.latestRuns.daily?.status),
         runId: packet.latestRuns.daily?.id ?? null,
         when: formatTimestamp(packet.latestRuns.daily?.createdAt ?? null),
       },
       {
-        label: "New AE check",
-        status: packet.latestRuns.newAeCheck?.status ?? "missing",
+        label: "New entrepreneur check",
+        status: runStatusLabel(packet.latestRuns.newAeCheck?.status),
         runId: packet.latestRuns.newAeCheck?.id ?? null,
         when: formatTimestamp(packet.latestRuns.newAeCheck?.createdAt ?? null),
       },
       {
-        label: "ClickUp worker",
-        status: packet.latestRuns.clickupWorker?.status ?? "missing",
+        label: "Task delivery check",
+        status: runStatusLabel(packet.latestRuns.clickupWorker?.status),
         runId: packet.latestRuns.clickupWorker?.id ?? null,
         when: formatTimestamp(packet.latestRuns.clickupWorker?.createdAt ?? null),
       },
     ],
     coverageReview: {
-      title: "AE coverage review",
-      ruleLabel: `Weekly review flag: fewer than ${packet.coverageReview.lowMatchThreshold} delivered matches in ${packet.coverageReview.windowDays} days or fewer than ${packet.coverageReview.reviewThreshold30Days} delivered matches in 30 days.`,
+      title: "Acquisition Entrepreneur coverage review",
+      ruleLabel: `Flag for review when an entrepreneur has fewer than ${packet.coverageReview.lowMatchThreshold} delivered matches in ${packet.coverageReview.windowDays} days or fewer than ${packet.coverageReview.reviewThreshold30Days} delivered matches in 30 days.`,
       metrics: [
         {
-          label: "Active AEs reviewed",
+          label: "Entrepreneurs reviewed",
           value: String(packet.coverageReview.totalActiveAes),
         },
         {
-          label: "Flagged under-served AEs",
+          label: "Entrepreneurs needing review",
           value: String(packet.coverageReview.underservedAeCount),
         },
         {
@@ -460,39 +487,39 @@ export function buildOperatorDashboardViewModel(
           value: String(packet.coverageReview.zeroMatchLast7DaysCount),
         },
         {
-          label: "Missing current thesis",
+          label: "Missing current investment focus",
           value: String(packet.coverageReview.noCurrentThesisCount),
         },
         {
-          label: "Missing ClickUp destination",
+          label: "Missing task destination",
           value: String(packet.coverageReview.noClickupDestinationCount),
         },
       ],
       flaggedAes: packet.coverageReview.flaggedAes.map((item) => ({
         label: item.aeName,
-        detail: `${item.diagnosis}. ClickUp engagement: ${item.engagementStatus === "active_recently" ? `${item.recentlyUpdatedDeals14Days} deal tasks updated in the last 14 days` : item.engagementStatus === "inactive_recently" ? "no recent ClickUp deal activity in the last 14 days" : "not yet available from the scheduled snapshot"}. 7-day deliveries: ${item.deliveredLast7Days}. 30-day deliveries: ${item.deliveredLast30Days}. Active deliverable matches now: ${item.activeDeliverableCandidates}. ${item.recommendation}`,
+        detail: `${item.diagnosis}. Recent task activity: ${item.engagementStatus === "active_recently" ? `${item.recentlyUpdatedDeals14Days} deal tasks updated in the last 14 days` : item.engagementStatus === "inactive_recently" ? "no recent deal-task activity in the last 14 days" : "not yet available from the scheduled snapshot"}. 7-day deliveries: ${item.deliveredLast7Days}. 30-day deliveries: ${item.deliveredLast30Days}. Active matches now: ${item.activeDeliverableCandidates}. ${item.recommendation}`,
         lastTouched:
           item.lastClickupActivityAt
-            ? `Last ClickUp activity: ${formatTimestamp(item.lastClickupActivityAt)} | ${item.thesisSummary}`
-            : `Last ClickUp activity: Not available | ${item.thesisSummary}`,
+            ? `Last task activity: ${formatTimestamp(item.lastClickupActivityAt)} | Investment focus: ${item.thesisSummary}`
+            : `Last task activity: Not available | Investment focus: ${item.thesisSummary}`,
         link: null,
       })),
     },
     staleDeals: {
-      thresholdLabel: `${packet.staleDealState.thresholdDays}-day stale review`,
+      thresholdLabel: `Deals with no activity for ${packet.staleDealState.thresholdDays}+ days`,
       basisLabel:
         packet.staleDealState.basis === "mixed_live_clickup_and_local_airtable"
-          ? "ClickUp counts come from live task timestamps in AE Deals lists. Airtable counts still come from Deal Flow Matcher timestamps."
+          ? "Task counts use recent task updates. Source counts use Deal Flow Matcher timestamps. These may not reflect conversations or work outside the recorded systems."
           : packet.staleDealState.basis === "local_workflow_timestamps"
-            ? "Based on Deal Flow Matcher timestamps, not confirmed human activity inside ClickUp."
-            : "Basis not available.",
+            ? "Based on recorded Deal Flow Matcher timestamps, which may not reflect conversations or work outside the system."
+            : "The review basis is not available.",
       metrics: [
         {
-          label: "Stale ClickUp-delivered deals",
+          label: "Deals with no recent task update",
           value: String(packet.staleDealState.clickupCount),
         },
         {
-          label: "Stale Airtable deals",
+          label: "Deals with no recent source update",
           value: String(packet.staleDealState.airtableCount),
         },
       ],
@@ -510,28 +537,28 @@ export function buildOperatorDashboardViewModel(
       })),
     },
     archiveCandidates: {
-      title: "Archive candidate review",
+      title: "Records to review before archiving",
       ruleLabel:
-        "Read-only review list. Candidates are 90-plus-day stale records based on Deal Flow Matcher timestamps and still require manual approval before any archive or delete action.",
+        "Read-only list of records with no recorded activity for 90+ days. Nothing is archived or deleted without manual approval.",
       metrics: [
         {
-          label: "ClickUp archive candidates",
+          label: "Task records to review",
           value: String(packet.staleDealState.clickupCount),
         },
         {
-          label: "Airtable archive candidates",
+          label: "Source records to review",
           value: String(packet.staleDealState.airtableCount),
         },
       ],
       clickupCandidates: packet.staleDealState.clickupSamples.map((item) => ({
         label: item.label,
-        detail: "Candidate for manual ClickUp archive review only.",
+        detail: "Candidate for manual task archive review only.",
         lastTouched: formatTimestamp(item.lastTouchedAt),
         link: item.link,
       })),
       airtableCandidates: packet.staleDealState.airtableSamples.map((item) => ({
         label: item.label,
-        detail: "Candidate for manual Airtable archive review only.",
+        detail: "Candidate for manual source archive review only.",
         lastTouched: formatTimestamp(item.lastTouchedAt),
         link: item.link,
       })),

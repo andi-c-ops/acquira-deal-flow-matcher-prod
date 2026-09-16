@@ -1,4 +1,5 @@
 import { ArchiveCandidateReview } from "@/app/dfm/operator/archive-candidate-review";
+import { ControlRoomPanel, ControlRoomTabs } from "@/app/dfm/operator/control-room-tabs";
 import { ExpandableReviewCard } from "@/app/dfm/operator/expandable-review-card";
 import {
   closeOperatorAgentPacketRuntime,
@@ -11,9 +12,9 @@ import { probeAirtableCredential } from "@/lib/dfm/providers/airtable-client";
 function toneClass(tone: "good" | "warning" | "danger") {
   if (tone === "good") {
     return {
-      background: "var(--accent-soft)",
-      borderColor: "var(--accent)",
-      color: "var(--accent)",
+      background: "var(--success-soft)",
+      borderColor: "var(--success)",
+      color: "var(--success)",
     };
   }
 
@@ -44,6 +45,11 @@ function factPillStyle() {
 
 function normalizeAeName(value: string) {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function summaryCount(summary: Record<string, unknown>, key: string) {
+  const value = Number(summary[key] ?? 0);
+  return Number.isFinite(value) ? value : 0;
 }
 
 export default async function OperatorDashboardPage({
@@ -79,7 +85,7 @@ export default async function OperatorDashboardPage({
             Deal Flow Matcher
           </p>
           <h1 style={{ margin: "10px 0 12px", fontSize: "2.35rem", lineHeight: 1.02, color: "var(--heading)", fontWeight: 900 }}>
-            Operator dashboard
+            Deal Flow Control Room
           </h1>
           <p style={{ margin: "0 0 18px", color: "var(--muted)", lineHeight: 1.7, fontWeight: 300 }}>
             Enter the internal DFM secret to open the live run-health view in your browser.
@@ -99,7 +105,7 @@ export default async function OperatorDashboardPage({
               If you are in ChatGPT Work
             </p>
             <p style={{ margin: "10px 0 0" }}>
-              This browser view does not bypass the protected operator secret. Open this page in an authorized browser, copy the live operator summary from the dashboard, then paste that summary into ChatGPT Work or Codex.
+              This browser view does not bypass the protected operator secret. Open this page in an authorized browser, copy the live operator summary from the Control Room, then paste that summary into ChatGPT Work or Codex.
             </p>
           </div>
           <form action="/api/dfm/internal/operator-session" method="post">
@@ -133,14 +139,9 @@ export default async function OperatorDashboardPage({
                 cursor: "pointer",
               }}
             >
-              Open dashboard
+              Open protected Control Room
             </button>
           </form>
-          <p style={{ margin: "14px 0 0" }}>
-            <a href="https://acquira-deal-flow-control-room.andicunanan2024.chatgpt.site" style={{ color: "var(--accent)", fontWeight: 700 }}>
-              Open Deal Flow Control Room
-            </a>
-          </p>
           {params.error === "unauthorized" ? (
             <p style={{ margin: "14px 0 0", color: "var(--danger)" }}>
               That secret did not match the current internal DFM secret.
@@ -216,7 +217,7 @@ export default async function OperatorDashboardPage({
           </p>
           <p style={{ margin: "18px 0 0" }}>
             <a href="/dfm/operator" style={{ color: "var(--accent)", fontWeight: 700 }}>
-              Return to operator dashboard
+              Return to Control Room
             </a>
           </p>
         </section>
@@ -256,10 +257,21 @@ export default async function OperatorDashboardPage({
 
     return null;
   })();
+  const latestDailySummary = packet.latestRuns.daily?.summary ?? {};
+  const dailyReportMetrics = [
+    { label: "New deals reviewed", value: summaryCount(latestDailySummary, "fetchedDeals") },
+    { label: "High-confidence matches", value: summaryCount(latestDailySummary, "totalStrongMatches") },
+    { label: "Possible matches", value: summaryCount(latestDailySummary, "totalModerateMatches") },
+    { label: "Entrepreneurs matched", value: summaryCount(latestDailySummary, "aesWithMatches") },
+    { label: "ClickUp tasks prepared", value: summaryCount(latestDailySummary, "deliveryJobsCreatedOrEligible") },
+  ];
 
   return (
-    <main style={{ padding: "24px", maxWidth: "1180px", margin: "0 auto" }}>
+    <main className="control-room-shell" style={{ padding: "24px", maxWidth: "1180px", margin: "0 auto" }}>
+      <ControlRoomTabs snapshot={view.hero.generatedAt}>
+        <ControlRoomPanel id="today">
       <section
+        className="control-room-hero"
         style={{
           position: "relative",
           overflow: "hidden",
@@ -276,10 +288,10 @@ export default async function OperatorDashboardPage({
             width: "520px",
             height: "520px",
             borderRadius: "999px",
-            background: "rgba(78, 164, 211, 0.16)",
-            filter: "blur(120px)",
-            top: "-240px",
-            left: "-140px",
+            background: "rgba(225, 180, 107, 0.17)",
+            filter: "blur(110px)",
+            top: "-250px",
+            left: "-160px",
           }}
         />
         <div
@@ -288,28 +300,26 @@ export default async function OperatorDashboardPage({
             width: "520px",
             height: "520px",
             borderRadius: "999px",
-            background: "rgba(79, 70, 229, 0.12)",
-            filter: "blur(120px)",
-            top: "-240px",
-            right: "-140px",
+            background: "rgba(70, 149, 192, 0.11)",
+            filter: "blur(110px)",
+            top: "-250px",
+            right: "-160px",
           }}
         />
-        <div style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "start", flexWrap: "wrap" }}>
+        <div className="control-room-hero-top" style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "start", flexWrap: "wrap" }}>
           <div>
             <p style={{ margin: 0, color: "var(--teal)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
               Deal Flow Matcher
             </p>
-            <h1 style={{ margin: "10px 0 10px", fontSize: "clamp(2.6rem, 5vw, 4.2rem)", lineHeight: 0.95, color: "var(--heading)", fontWeight: 900 }}>
-              Operator dashboard
-            </h1>
+            <h2 className="control-room-hero-title" style={{ margin: "10px 0 10px", fontSize: "clamp(2.6rem, 5vw, 4.2rem)", lineHeight: 0.95, color: "var(--heading)", fontWeight: 900 }}>
+              Today at a glance
+            </h2>
             <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.6, fontWeight: 300, fontSize: "1.08rem" }}>{view.hero.summaryLine}</p>
-            <p style={{ margin: "12px 0 0" }}>
-              <a href="https://acquira-deal-flow-control-room.andicunanan2024.chatgpt.site" style={{ color: "var(--accent)", fontWeight: 700 }}>
-                Open Deal Flow Control Room
-              </a>
+            <p style={{ margin: "12px 0 0", color: "var(--muted)", fontSize: "0.9rem" }}>
+              One protected view for today’s run, task delivery, entrepreneur coverage, and items needing review.
             </p>
           </div>
-          <div style={{ textAlign: "right" }}>
+          <div className="control-room-status" style={{ textAlign: "right" }}>
             <div
               style={{
                 display: "inline-block",
@@ -317,13 +327,13 @@ export default async function OperatorDashboardPage({
                 padding: "10px 14px",
                 background:
                   view.hero.statusLabel === "Healthy"
-                    ? "var(--accent-soft)"
+                    ? "var(--success-soft)"
                     : view.hero.statusLabel === "Delivery error"
                       ? "var(--danger-soft)"
                       : "var(--warn-soft)",
                 color:
                   view.hero.statusLabel === "Healthy"
-                    ? "var(--accent)"
+                    ? "var(--success)"
                     : view.hero.statusLabel === "Delivery error"
                       ? "var(--danger)"
                       : "var(--warn)",
@@ -336,6 +346,7 @@ export default async function OperatorDashboardPage({
           </div>
         </div>
         <div
+          className="control-room-quick-facts"
           style={{
             position: "relative",
             display: "grid",
@@ -345,7 +356,7 @@ export default async function OperatorDashboardPage({
           }}
         >
           {view.hero.quickFacts.map((fact) => (
-            <div key={fact.label} style={factPillStyle()}>
+            <div key={fact.label} className="control-room-quick-fact" style={factPillStyle()}>
               <p
                 style={{
                   margin: 0,
@@ -367,6 +378,7 @@ export default async function OperatorDashboardPage({
       </section>
 
       <section
+        className="control-room-run-control"
         style={{
           ...toneClass(view.runControl.tone),
           marginTop: "20px",
@@ -379,27 +391,26 @@ export default async function OperatorDashboardPage({
         <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", flexWrap: "wrap", alignItems: "start" }}>
           <div>
             <p style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: "0.78rem", fontWeight: 700 }}>
-              Run Control
+              Today’s outcome
             </p>
             <h2 style={{ margin: "8px 0 8px", fontSize: "1.5rem", lineHeight: 1.05 }}>{view.runControl.label}</h2>
             <p style={{ margin: 0, lineHeight: 1.55, maxWidth: "760px" }}>{view.runControl.detail}</p>
           </div>
-          <a
-            href="https://acquira-deal-flow-control-room.andicunanan2024.chatgpt.site"
+          <span
             style={{
               border: "1px solid currentColor",
               borderRadius: "999px",
               padding: "9px 13px",
               fontWeight: 700,
               fontSize: "0.9rem",
-              textDecoration: "none",
               whiteSpace: "nowrap",
             }}
           >
-            Open Control Room
-          </a>
+            Internal view
+          </span>
         </div>
         <div
+          className="control-room-checks"
           style={{
             display: "grid",
             gap: "10px",
@@ -410,6 +421,7 @@ export default async function OperatorDashboardPage({
           {view.runControl.checks.map((check) => (
             <article
               key={check.label}
+              className="control-room-check"
               style={{
                 background: "rgba(255,255,255,0.78)",
                 border: "1px solid rgba(148, 163, 184, 0.24)",
@@ -430,10 +442,11 @@ export default async function OperatorDashboardPage({
         </div>
       </section>
 
-      <section style={{ marginTop: "20px", display: "grid", gap: "16px", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+      <section className="control-room-metrics" style={{ marginTop: "20px", display: "grid", gap: "16px", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
         {view.metrics.map((metric) => (
           <article
             key={metric.label}
+            className="control-room-metric"
             style={{
               background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%)",
               border: "1px solid var(--line)",
@@ -448,11 +461,60 @@ export default async function OperatorDashboardPage({
         ))}
       </section>
 
-      <section style={{ marginTop: "20px", display: "grid", gap: "16px", gridTemplateColumns: "minmax(0, 1.45fr) minmax(320px, 1fr)" }}>
+      <section
+        className="control-room-report"
+        style={{
+          marginTop: "20px",
+          background: "linear-gradient(140deg, #1d2a35 0%, #2b6f91 100%)",
+          border: "1px solid rgba(70,149,192,0.26)",
+          borderRadius: "24px",
+          padding: "22px",
+          color: "#F8FAFC",
+          boxShadow: "0 18px 40px rgba(15, 23, 42, 0.16)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", flexWrap: "wrap", alignItems: "start" }}>
+          <div>
+            <p style={{ margin: 0, color: "var(--brand-blue-soft)", textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "0.74rem", fontWeight: 800 }}>
+              Latest report
+            </p>
+            <h2 style={{ margin: "8px 0 6px", fontSize: "1.45rem" }}>Daily Deal Report</h2>
+            <p style={{ margin: 0, color: "#e5f1f6", lineHeight: 1.5 }}>
+              {view.hero.statusLabel === "Healthy" ? "Report evidence is complete for the latest successful daily run." : "Review the evidence state before treating this report as complete."}
+            </p>
+          </div>
+          <span
+            style={{
+              borderRadius: "999px",
+              padding: "8px 12px",
+              background: view.runControl.tone === "good" ? "rgba(52,211,153,0.16)" : "rgba(251,191,36,0.16)",
+              color: view.runControl.tone === "good" ? "#6EE7B7" : "#FCD34D",
+              fontWeight: 800,
+              fontSize: "0.82rem",
+            }}
+          >
+            {view.hero.quickFacts.find((fact) => fact.label === "Report")?.value ?? "Unknown"}
+          </span>
+        </div>
+        <div className="control-room-report-metrics" style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", marginTop: "20px" }}>
+          {dailyReportMetrics.map((metric) => (
+            <div key={metric.label} className="control-room-report-metric" style={{ borderTop: "1px solid rgba(148,163,184,0.22)", paddingTop: "12px" }}>
+              <p style={{ margin: 0, color: "#d1e3eb", fontSize: "0.78rem" }}>{metric.label}</p>
+              <p style={{ margin: "6px 0 0", fontSize: "1.5rem", fontWeight: 900 }}>{metric.value}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+        </ControlRoomPanel>
+
+        <ControlRoomPanel id="evidence">
+
+      <section className="control-room-secondary-grid" style={{ marginTop: "20px", display: "grid", gap: "16px", gridTemplateColumns: "minmax(0, 1.45fr) minmax(320px, 1fr)" }}>
         <div style={{ display: "grid", gap: "16px" }}>
           {view.alerts.map((alert) => (
             <article
               key={alert.title}
+              className={`control-room-alert tone-${alert.tone}`}
               style={{
                 ...toneClass(alert.tone),
                 border: "1px solid",
@@ -467,6 +529,7 @@ export default async function OperatorDashboardPage({
         </div>
 
         <aside
+          className="control-room-secondary-card"
           style={{
             background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%)",
             border: "1px solid var(--line)",
@@ -476,7 +539,7 @@ export default async function OperatorDashboardPage({
           }}
         >
           <p style={{ margin: 0, color: "var(--teal)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, fontSize: "0.8rem" }}>
-            Timeline
+            Run history
           </p>
           <h2 style={{ margin: "8px 0 16px" }}>Latest runs</h2>
           <div style={{ display: "grid", gap: "14px" }}>
@@ -484,10 +547,10 @@ export default async function OperatorDashboardPage({
               <div key={run.label} style={{ paddingBottom: "14px", borderBottom: "1px solid var(--line)" }}>
                 <p style={{ margin: 0, fontWeight: 700, color: "var(--heading)" }}>{run.label}</p>
                 <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-                  Status: {run.status}
+                  Outcome: {run.status}
                 </p>
                 <p style={{ margin: "4px 0 0", color: "var(--muted)" }}>
-                  Run ID: {run.runId ?? "Not available"}
+                  Reference: {run.runId ?? "Not available"}
                 </p>
                 <p style={{ margin: "4px 0 0", color: "var(--muted)" }}>
                   Started: {run.when}
@@ -515,7 +578,12 @@ export default async function OperatorDashboardPage({
         </aside>
       </section>
 
+        </ControlRoomPanel>
+
+        <ControlRoomPanel id="coverage">
+
       <section
+        className="control-room-coverage"
         style={{
           marginTop: "20px",
           background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%)",
@@ -530,7 +598,7 @@ export default async function OperatorDashboardPage({
         <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", flexWrap: "wrap", alignItems: "start" }}>
           <div>
             <p style={{ margin: 0, color: "var(--teal)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-              Weekly AE Coverage Review
+              Weekly entrepreneur coverage
             </p>
             <h2 style={{ margin: "8px 0 8px", fontSize: "1.38rem", lineHeight: 1.05 }}>{view.coverageReview.title}</h2>
             <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.55, fontSize: "0.94rem", maxWidth: "720px" }}>
@@ -557,19 +625,26 @@ export default async function OperatorDashboardPage({
         </div>
 
         <ExpandableReviewCard
-          title="AEs that need coverage review"
+          className="coverage-review-card"
+          title="Entrepreneurs needing coverage review"
           countLabel="Flagged for manual investigation"
           countValue={view.coverageReview.metrics[1]?.value ?? "0"}
-          emptyMessage="No AEs are currently below the weekly coverage review thresholds."
+          emptyMessage="No entrepreneurs are currently below the coverage thresholds."
           items={view.coverageReview.flaggedAes}
-          openLabel="Flagged AEs"
+          openLabel="Flagged entrepreneurs"
           linkLabel="Open"
           accent="blue"
+          disclosureMode="per-item"
         />
       </section>
 
+        </ControlRoomPanel>
+
+        <ControlRoomPanel id="exceptions">
+
       {params.dedupe === "success" ? (
         <section
+          className="control-room-dedupe-notice"
           style={{
             ...toneClass("good"),
             marginTop: "20px",
@@ -578,12 +653,13 @@ export default async function OperatorDashboardPage({
             padding: "18px",
           }}
         >
-          <strong>Duplicate record archived.</strong> The Strong-only routed thesis remains active. No ClickUp tasks or Airtable cursor were changed.
+          <strong>Duplicate record archived.</strong> The high-confidence routed investment focus remains active. No ClickUp tasks or new-deals checkpoint were changed.
         </section>
       ) : null}
 
       {duplicateCleanup ? (
         <section
+          className="control-room-dedupe"
           style={{
             marginTop: "20px",
             background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%)",
@@ -594,20 +670,20 @@ export default async function OperatorDashboardPage({
           }}
         >
           <p style={{ margin: 0, color: "var(--teal)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-            Duplicate AE Record Cleanup
+            Duplicate record cleanup
           </p>
           <h2 style={{ margin: "8px 0", fontSize: "1.38rem", lineHeight: 1.05 }}>
-            Keep the Strong-only routing for {duplicateCleanup.retainedThesis.aeName}
+            Keep the high-confidence routing for {duplicateCleanup.retainedThesis.aeName}
           </h2>
           <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.55, maxWidth: "760px" }}>
-            This archives the duplicate Moderate record with no ClickUp destination. The active Strong-only routed record stays in place. Any unsent duplicate jobs are cancelled first. Existing ClickUp tasks and the Airtable cursor are not changed.
+            This archives the duplicate possible-match record with no task destination. The active high-confidence record stays in place. Any unsent duplicate tasks are cancelled first. Existing ClickUp tasks and the new-deals checkpoint are not changed.
           </p>
           <form action="/api/dfm/internal/ae-theses/deactivate-duplicate" method="post" style={{ marginTop: "16px", display: "grid", gap: "12px" }}>
             <input type="hidden" name="archiveAeThesisId" value={duplicateCleanup.archiveCandidate.aeThesisId} />
             <input type="hidden" name="retainAeThesisId" value={duplicateCleanup.retainedThesis.aeThesisId} />
             <label style={{ display: "flex", gap: "10px", alignItems: "start", color: "var(--ink)", lineHeight: 1.45 }}>
               <input type="checkbox" name="confirmation" value="ARCHIVE_DUPLICATE" required style={{ marginTop: "3px" }} />
-              I confirm that the Moderate, unrouted duplicate should be archived and the Strong-only routed record should remain active.
+              I confirm that the possible-match duplicate should be archived and the high-confidence routed record should remain active.
             </label>
             <div>
               <button
@@ -622,7 +698,7 @@ export default async function OperatorDashboardPage({
                   cursor: "pointer",
                 }}
               >
-                Archive Moderate duplicate
+              Archive possible-match duplicate
               </button>
             </div>
           </form>
@@ -635,6 +711,7 @@ export default async function OperatorDashboardPage({
       ) : null}
 
       <section
+        className="control-room-stale-review"
         style={{
           marginTop: "20px",
           background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%)",
@@ -649,7 +726,7 @@ export default async function OperatorDashboardPage({
         <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", flexWrap: "wrap", alignItems: "start" }}>
           <div>
             <p style={{ margin: 0, color: "var(--teal)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-              Stale Deal Review
+              Deals needing review
             </p>
             <h2 style={{ margin: "8px 0 8px", fontSize: "1.38rem", lineHeight: 1.05 }}>{view.staleDeals.thresholdLabel}</h2>
             <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.55, fontSize: "0.94rem", maxWidth: "720px" }}>{view.staleDeals.basisLabel}</p>
@@ -675,30 +752,32 @@ export default async function OperatorDashboardPage({
 
         <div style={{ display: "grid", gap: "16px", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
           <ExpandableReviewCard
-            title="Stale ClickUp-delivered deals"
-            countLabel="Live stale-task review"
+            title="Deals with no recent task update"
+            countLabel="Task review queue"
             countValue={view.staleDeals.metrics[0]?.value ?? "0"}
-            emptyMessage="No stale ClickUp-delivered deals found in the current sample window."
+            emptyMessage="No deals without a recent task update were found in the current review window."
             items={view.staleDeals.clickupSamples}
-            openLabel="ClickUp samples"
+            openLabel="Task examples"
             linkLabel="Open task"
             accent="teal"
           />
 
           <ExpandableReviewCard
-            title="Stale Airtable deals"
-            countLabel="Airtable stale record review"
+            title="Deals with no recent source update"
+            countLabel="Source review queue"
             countValue={view.staleDeals.metrics[1]?.value ?? "0"}
-            emptyMessage="No stale Airtable deals found in the current sample window."
+            emptyMessage="No deals without a recent source update were found in the current review window."
             items={view.staleDeals.airtableSamples}
-            openLabel="Airtable samples"
-            linkLabel="Open listing"
+            openLabel="Source examples"
+            linkLabel="Open source record"
             accent="blue"
           />
         </div>
       </section>
 
       <ArchiveCandidateReview view={view.archiveCandidates} />
+        </ControlRoomPanel>
+      </ControlRoomTabs>
     </main>
   );
 }

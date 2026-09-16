@@ -128,18 +128,18 @@ test("buildOperatorDashboardViewModel includes stale-deal counts and samples", (
   assert.match(view.coverageReview.ruleLabel, /fewer than 1 delivered matches in 7 days/);
   assert.equal(view.coverageReview.flaggedAes[0]?.label, "AE One");
   assert.match(view.coverageReview.flaggedAes[0]?.detail, /Criteria may be too narrow/);
-  assert.match(view.coverageReview.flaggedAes[0]?.detail ?? "", /no recent ClickUp deal activity/);
-  assert.match(view.coverageReview.flaggedAes[0]?.lastTouched ?? "", /Last ClickUp activity:/);
-  assert.equal(view.staleDeals.thresholdLabel, "90-day stale review");
+  assert.match(view.coverageReview.flaggedAes[0]?.detail ?? "", /no recent deal-task activity/);
+  assert.match(view.coverageReview.flaggedAes[0]?.lastTouched ?? "", /Last task activity:/);
+  assert.equal(view.staleDeals.thresholdLabel, "Deals with no activity for 90+ days");
   assert.equal(view.staleDeals.metrics[0]?.value, "3");
   assert.equal(view.staleDeals.metrics[1]?.value, "7");
   assert.equal(view.staleDeals.clickupSamples[0]?.label, "AE One | Deal One");
-  assert.match(view.staleDeals.basisLabel, /ClickUp counts come from live task timestamps/);
+  assert.match(view.staleDeals.basisLabel, /Task counts use recent task updates/);
   assert.equal(view.archiveCandidates.metrics[0]?.value, "3");
   assert.equal(view.archiveCandidates.metrics[1]?.value, "7");
   assert.equal(
     view.archiveCandidates.clickupCandidates[0]?.detail,
-    "Candidate for manual ClickUp archive review only.",
+    "Candidate for manual task archive review only.",
   );
 
   packet.emailState = {
