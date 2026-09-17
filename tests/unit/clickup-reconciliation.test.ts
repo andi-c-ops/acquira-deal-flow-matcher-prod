@@ -122,3 +122,43 @@ test("new task descriptions carry the delivery marker", async () => {
   assert.ok(requestBody);
   assert.match(String(requestBody.description), new RegExp(buildDfmDeliveryMarker(key)));
 });
+
+test("task creation bounds provider calls and updates numeric fields concurrently", async () => {
+  let calls = 0;
+  let active = 0;
+  let maxActive = 0;
+  const signals: AbortSignal[] = [];
+
+  const result = await withStubbedFetch(
+    (async (_input, init) => {
+      calls += 1;
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      if (init?.signal instanceof AbortSignal) {
+        signals.push(init.signal);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return new Response(JSON.stringify({ id: "task-1", url: "https://app.clickup.com/t/task-1" }), {
+        status: 200,
+      });
+    }) as typeof fetch,
+    () =>
+      createClickupDealTask({
+        aeName: "AE One",
+        dealName: "Roofing Co",
+        matchQuality: "Moderate",
+        scorePct: 70,
+        description: "Deal description",
+        clickupListId: "target-list",
+        purchasePrice: 1_000_000,
+        cashFlow: 200_000,
+        multiple: 5,
+      }),
+  );
+
+  assert.equal(result.taskId, "task-1");
+  assert.equal(calls, 4, "creation plus three numeric field updates");
+  assert.equal(signals.length, calls, "every provider call is abortable");
+  assert.ok(maxActive >= 3, "numeric field updates should overlap");
+});

@@ -2,6 +2,7 @@ import type { BaseRunResult, ProcessClickupJobsInput } from "@/lib/dfm/domain/ty
 import { getAeThesisById } from "@/lib/dfm/db/repositories/ae-theses";
 import { getMatchCandidateById } from "@/lib/dfm/db/repositories/match-candidates";
 import {
+  claimDeliveryJobs,
   getDeliveryJobById,
   listPendingDeliveryJobs,
   updateDeliveryJobStatus,
@@ -21,6 +22,8 @@ import {
 import { sendErrorNotification } from "@/lib/dfm/providers/notification-client";
 import { unwrapSupabaseResult } from "@/lib/dfm/utils/supabase";
 import { finalizeDailyRunsWorkflow } from "@/lib/dfm/workflows/finalize-daily-runs";
+
+const STALE_PROCESSING_AFTER_SECONDS = 10 * 60;
 
 function formatKeyMetrics(input: {
   industry?: string | null;
@@ -97,6 +100,7 @@ export async function processClickupJobsWorkflow(
 ): Promise<
   BaseRunResult & {
     claimed: number;
+    reclaimed: number;
     sent: number;
     retryScheduled: number;
     terminal: number;
@@ -115,7 +119,19 @@ export async function processClickupJobsWorkflow(
     unwrapSupabaseResult(await updateMatchRunStatus(runId, "running"));
     logInfo("Starting ClickUp job processing workflow", { runId, input });
 
-    const jobs = unwrapSupabaseResult(await listPendingDeliveryJobs(input.maxJobs ?? 10));
+    const requestedMaxJobs = input.maxJobs ?? 10;
+    const jobs = input.dryRun
+      ? unwrapSupabaseResult(await listPendingDeliveryJobs(requestedMaxJobs))
+      : unwrapSupabaseResult(
+          await claimDeliveryJobs({
+            workerId: input.workerId,
+            limit: requestedMaxJobs,
+            staleAfterSeconds: STALE_PROCESSING_AFTER_SECONDS,
+          }),
+        );
+    const reclaimed = input.dryRun
+      ? 0
+      : jobs.filter((job) => String(job.previous_status ?? "") === "processing").length;
     let sent = 0;
     let retryScheduled = 0;
     let terminal = 0;
@@ -128,13 +144,6 @@ export async function processClickupJobsWorkflow(
       }
 
       try {
-        unwrapSupabaseResult(
-          await updateDeliveryJobStatus(jobId, "processing", {
-            claimed_by: input.workerId,
-            claimed_at: new Date().toISOString(),
-          }),
-        );
-
         const existingReceiptResult = await getDeliveryReceiptByJobId(jobId);
         if (existingReceiptResult.error) {
           throw new Error(existingReceiptResult.error.message);
@@ -267,6 +276,7 @@ export async function processClickupJobsWorkflow(
       dryRun: input.dryRun ?? false,
       strictFailure: input.strictFailure ?? false,
       claimed: jobs.length,
+      reclaimed,
       sent,
       retryScheduled,
       terminal,
@@ -281,6 +291,7 @@ export async function processClickupJobsWorkflow(
       runId,
       status: "succeeded",
       claimed: jobs.length,
+      reclaimed,
       sent,
       retryScheduled,
       terminal,

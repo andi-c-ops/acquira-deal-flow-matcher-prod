@@ -359,6 +359,7 @@ export async function runDailyWorkflow(input: RunDailyInput): Promise<BaseRunRes
         Object.assign(summary, {
           clickupDelivery: {
             claimed: deliveryResult.claimed,
+            reclaimed: deliveryResult.reclaimed,
             sent: deliveryResult.sent,
             retryScheduled: deliveryResult.retryScheduled,
             terminal: deliveryResult.terminal,

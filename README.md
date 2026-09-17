@@ -37,7 +37,7 @@ Working standalone service with Airtable intake, Google Sheets thesis intake, Cl
 
 - Deal source: `BBS Businesses in House` Airtable base `appWjJI1If33uroBs`, table `tbllzLdE5ZLCLD2eI`, view `viwJtNNzh556xVJoI`
 - Thesis source: `Accelerator Investment Thesis (Responses)` Google Sheet `1BGRFFrpLstH_KCUhHS2hKaQNomyKxOsLxmxv8A63xCc`
-- Managed Postgres host: currently the shared Acquira Supabase Postgres project at `https://jinjqqibkmsdmfwlizte.supabase.co`
+- Managed Postgres host: dedicated Neon free-tier resource provisioned through Vercel for DFM; Acquira CRM remains separate
 
 ## Current Schedule
 
@@ -67,7 +67,7 @@ Production-friendly auth:
 
 - Google OAuth client and token material can be supplied either as local file paths or inline JSON env vars
 - Inline JSON env vars are the intended path for unattended Vercel execution
-- The workflow can persist through either `SUPABASE_SERVICE_ROLE_KEY` or a direct pooled Postgres connection such as `DIRECT_URL`
+- The workflow persists through the dedicated `DFM_DATABASE_URL` connection supplied by Vercel's Neon integration
 
 ## Managed Services Model
 
@@ -79,7 +79,7 @@ Production-friendly auth:
 Current recommendation:
 
 - keep Vercel as the runtime
-- keep the existing shared Supabase Postgres instance as the lowest-cost managed database
+- keep the dedicated Neon free-tier resource as the DFM managed database
 - avoid Google Drive, Airtable, or ClickUp as workflow-state stores
 
 Current runtime simplification:
@@ -105,7 +105,7 @@ The current first-pass implementation also persists AE theses, thesis versions, 
 - Thin Next.js route handlers for cron, event intake, replay, and worker paths
 - Workflow implementations for run state, AE upserts, thesis version persistence, raw deal snapshots, normalized deal persistence, candidate upserts, daily delivery job enqueue, and backfill matching
 - Shared env validation and auth guards
-- Repo-owned first-pass managed-Postgres migration draft, now also applied to the shared Acquira Supabase Postgres project
+- Repo-owned first-pass managed-Postgres migration, applied to the dedicated Neon DFM resource
 - Repository-layer stubs for runs, deals, candidates, jobs, receipts, errors, and cursors
 - First-pass Airtable client, Google Sheets intake client, ClickUp client, Gmail notification client, thesis normalization, deal normalization, enrichment, and scoring
 - Seeded smoke runner for zero-network matching verification and a real-data live test harness
@@ -113,7 +113,7 @@ The current first-pass implementation also persists AE theses, thesis versions, 
 
 ## Current Production Blockers
 
-1. Keep a working pooled Postgres connection such as `DIRECT_URL` so the cron routes can use the live `dfm_public` and `dfm_private` tables
+1. Verify the deployed runtime reads `DFM_DATABASE_URL` and uses the live `dfm_public` and `dfm_private` tables
 2. Replace local-file Google OAuth token dependencies with production-safe secrets or a service-to-service auth path before unattended Vercel execution
 3. Add stronger ClickUp task payload shaping and custom-field mapping
 4. Add explicit rate-limit and retry classification plus replay coverage

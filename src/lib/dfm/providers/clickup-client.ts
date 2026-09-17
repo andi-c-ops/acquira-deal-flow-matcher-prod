@@ -36,8 +36,12 @@ export interface ClickupTaskDetails {
   providerResponse: Record<string, unknown>;
 }
 
-const CLICKUP_REQUEST_TIMEOUT_MS = 30_000;
-const CLICKUP_MAX_RATE_LIMIT_RETRIES = 3;
+// Keep every provider call bounded well below the 60-second cron route cap.
+// Numeric custom-field updates are issued concurrently below, so one task
+// still has room for lookup, creation, and optional field updates.
+const CLICKUP_REQUEST_TIMEOUT_MS = 8_000;
+const CLICKUP_MAX_RATE_LIMIT_RETRIES = 1;
+const CLICKUP_MAX_RETRY_DELAY_MS = 1_000;
 const DFM_DELIVERY_MARKER = "DFM Delivery Key:";
 
 const DEAL_CUSTOM_FIELD_IDS = {
@@ -108,9 +112,12 @@ async function clickupRequest(input: string | URL, init?: RequestInit) {
 
     if (response.status === 429 && attempt < CLICKUP_MAX_RATE_LIMIT_RETRIES) {
       const retryAfterSeconds = Number(response.headers.get("retry-after"));
-      const delayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-        ? retryAfterSeconds * 1_000
-        : (attempt + 1) * 1_000;
+      const delayMs = Math.min(
+        CLICKUP_MAX_RETRY_DELAY_MS,
+        Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+          ? retryAfterSeconds * 1_000
+          : (attempt + 1) * 1_000,
+      );
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       continue;
     }
@@ -197,7 +204,7 @@ export async function findClickupTasksByDeliveryKey(input: {
 }
 
 async function setCustomFieldValue(taskId: string, fieldId: string, value: number, apiKey: string) {
-  const response = await fetch(`https://api.clickup.com/api/v2/task/${taskId}/field/${fieldId}`, {
+  await clickupRequest(`https://api.clickup.com/api/v2/task/${taskId}/field/${fieldId}`, {
     method: "POST",
     headers: {
       Authorization: apiKey,
@@ -205,13 +212,6 @@ async function setCustomFieldValue(taskId: string, fieldId: string, value: numbe
     },
     body: JSON.stringify({ value }),
   });
-
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
-    throw new Error(
-      `ClickUp custom field update failed for field ${fieldId} with status ${response.status}${details ? `: ${details}` : ""}`,
-    );
-  }
 }
 
 async function trySetNumericCustomField(input: {
@@ -260,7 +260,7 @@ export async function createClickupDealTask(
   if (!env.CLICKUP_API_KEY) {
     throw new Error("CLICKUP_API_KEY is required for live ClickUp task creation");
   }
-  const response = await fetch(`https://api.clickup.com/api/v2/list/${input.clickupListId}/task`, {
+  const response = await clickupRequest(`https://api.clickup.com/api/v2/list/${input.clickupListId}/task`, {
     method: "POST",
     headers: {
       Authorization: env.CLICKUP_API_KEY,
@@ -279,10 +279,6 @@ export async function createClickupDealTask(
     }),
   });
 
-  if (!response.ok) {
-    throw new Error(`ClickUp task creation failed with status ${response.status}`);
-  }
-
   const data = (await response.json()) as {
     id?: string;
     url?: string;
@@ -291,32 +287,32 @@ export async function createClickupDealTask(
   const taskId = data.id ?? "unknown-task-id";
   const warnings: string[] = [];
 
-  await trySetNumericCustomField({
-    taskId,
-    fieldId: DEAL_CUSTOM_FIELD_IDS.purchasePrice,
-    value: input.purchasePrice,
-    apiKey: env.CLICKUP_API_KEY,
-    fieldLabel: "purchasePrice",
-    warnings,
-  });
-
-  await trySetNumericCustomField({
-    taskId,
-    fieldId: DEAL_CUSTOM_FIELD_IDS.cashFlow,
-    value: input.cashFlow,
-    apiKey: env.CLICKUP_API_KEY,
-    fieldLabel: "cashFlow",
-    warnings,
-  });
-
-  await trySetNumericCustomField({
-    taskId,
-    fieldId: DEAL_CUSTOM_FIELD_IDS.multiple,
-    value: input.multiple,
-    apiKey: env.CLICKUP_API_KEY,
-    fieldLabel: "multiple",
-    warnings,
-  });
+  await Promise.all([
+    trySetNumericCustomField({
+      taskId,
+      fieldId: DEAL_CUSTOM_FIELD_IDS.purchasePrice,
+      value: input.purchasePrice,
+      apiKey: env.CLICKUP_API_KEY,
+      fieldLabel: "purchasePrice",
+      warnings,
+    }),
+    trySetNumericCustomField({
+      taskId,
+      fieldId: DEAL_CUSTOM_FIELD_IDS.cashFlow,
+      value: input.cashFlow,
+      apiKey: env.CLICKUP_API_KEY,
+      fieldLabel: "cashFlow",
+      warnings,
+    }),
+    trySetNumericCustomField({
+      taskId,
+      fieldId: DEAL_CUSTOM_FIELD_IDS.multiple,
+      value: input.multiple,
+      apiKey: env.CLICKUP_API_KEY,
+      fieldLabel: "multiple",
+      warnings,
+    }),
+  ]);
 
   return {
     taskId,

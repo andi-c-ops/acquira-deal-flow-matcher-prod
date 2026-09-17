@@ -18,20 +18,10 @@ function buildChecks() {
   const checks: Check[] = [
     {
       label: "Managed Postgres connection",
-      ok:
-        hasValue(env.SUPABASE_SERVICE_ROLE_KEY) ||
-        hasValue(env.DIRECT_URL) ||
-        hasValue(env.DATABASE_URL),
-      detail:
-        hasValue(env.SUPABASE_SERVICE_ROLE_KEY) ||
-        hasValue(env.DIRECT_URL) ||
-        hasValue(env.DATABASE_URL)
-          ? hasValue(env.SUPABASE_SERVICE_ROLE_KEY)
-            ? "Supabase service role configured"
-            : hasValue(env.DIRECT_URL)
-              ? "DIRECT_URL configured"
-              : "DATABASE_URL configured"
-          : "required for cron, worker, dedupe, and cursor persistence",
+      ok: hasValue(env.DFM_DATABASE_URL),
+      detail: hasValue(env.DFM_DATABASE_URL)
+        ? "dedicated DFM_DATABASE_URL configured"
+        : "required for DFM cron, worker, dedupe, and cursor persistence",
     },
     {
       label: "Airtable API key",

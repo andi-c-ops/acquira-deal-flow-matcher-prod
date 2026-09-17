@@ -13,7 +13,7 @@ Core boundaries:
 Operational recommendation:
 
 - Use Vercel for route execution, cron scheduling, and notifications
-- Use the existing shared Supabase Postgres instance as the managed Postgres layer
+- Use the dedicated Neon free-tier resource provisioned through Vercel as the DFM managed Postgres layer
 - Do not use Google Drive as a live workflow database
 - Do not move cursor, job, or receipt state into Airtable or ClickUp
 

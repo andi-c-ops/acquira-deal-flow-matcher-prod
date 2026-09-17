@@ -6,7 +6,11 @@ import { processClickupJobsWorkflow } from "@/lib/dfm/workflows/process-clickup-
 
 export const maxDuration = 60;
 
-const DEFAULT_MAX_JOBS = 10;
+// Keep the sequential worker inside the Vercel runtime budget even when
+// ClickUp is slow. The queue remains durable, so the next minute invocation
+// continues with the next bounded batch.
+const DEFAULT_MAX_JOBS = 2;
+const MAX_JOBS_PER_INVOCATION = 2;
 
 async function handleRequest(request: Request, fallbackBody: Record<string, unknown>) {
   if (!verifyCronRequest(request)) {
@@ -19,7 +23,7 @@ async function handleRequest(request: Request, fallbackBody: Record<string, unkn
   const result = await processClickupJobsWorkflow({
     workerId: "vercel-cron-clickup",
     dryRun: input.dryRun ?? false,
-    maxJobs: input.maxJobs ?? DEFAULT_MAX_JOBS,
+    maxJobs: Math.min(input.maxJobs ?? DEFAULT_MAX_JOBS, MAX_JOBS_PER_INVOCATION),
     strictFailure: false,
     skipNotifications: input.skipNotifications,
   });

@@ -59,6 +59,7 @@ It includes:
 - latest scheduled run state
 - safe Airtable and Google cursor state
 - delivery-queue totals
+- run-scoped job-to-receipt parity, including distinct ClickUp task IDs and unsent jobs
 - report state derived from the latest daily run
 - weekly AE coverage and a timestamped recent ClickUp Deals-list activity snapshot
 - 90-day stale-deal counts and samples based on Deal Flow Matcher delivery records
@@ -92,7 +93,7 @@ The current implementation also keeps normalized deals, AE thesis versions, raw 
 
 ## Scheduling
 
-The service is scheduled through [vercel.json](/Users/andicunanan/Documents/CompanyOS/tmp/deal-flow-matcher/vercel.json).
+The service is scheduled through [vercel.json](</Users/andicunanan/Documents/CompanyOS/empowerlabs-ccworkspace/tmp/Acquira/Acquira Deal Flow Matcher/Repo/vercel.json>).
 
 ### Current Cron Schedule
 
@@ -107,6 +108,12 @@ The service is scheduled through [vercel.json](/Users/andicunanan/Documents/Comp
 |---|---|
 | Daily run | `/api/dfm/cron/daily` |
 | New AE daily check | `/api/dfm/cron/new-ae-check` |
+
+The protected read-only Airtable credential probe is available at
+`/api/dfm/internal/airtable-probe`. It performs one minimal Airtable GET using
+the Production runtime secret and returns only a redacted status. It does not
+create a run, write Neon DFM state, advance a cursor, enqueue delivery, or send
+notifications.
 
 ### Other Trigger Paths
 
@@ -354,17 +361,25 @@ Safeguard:
 
 ### 3. Pending jobs are loaded
 
-The worker reads jobs with:
+The worker atomically claims a bounded batch from daily runs with:
 
 - `pending`
 - `retry_scheduled`
+- `processing` claims older than 10 minutes
+
+Claims use row locking so concurrent minute-level invocations do not select
+the same job, and the existing retry classification remains responsible for
+deciding whether a failed attempt is retryable or terminal.
 
 ### 4. Job is marked `processing`
 
-The worker sets:
+The claim operation sets:
 
 - `claimed_by`
 - `claimed_at`
+
+If a stale `processing` claim is recovered, the worker records that recovery
+in `last_error` before attempting the idempotent receipt and ClickUp checks.
 
 ### 5. Existing receipt is checked first
 
@@ -382,13 +397,11 @@ The worker reads:
 - normalized deal
 - match candidate
 
-### 7. ClickUp task is created
+### 7. Existing task is reconciled or a ClickUp task is created
 
-The worker sends a task creation request to ClickUp.
+Before creating a task, the worker searches the configured list for the exact task title and the job's DFM delivery marker. If exactly one marked task exists, it reuses that task. If none exists, it creates a task and appends the marker to the description. If more than one marked task exists, it fails closed rather than guessing.
 
-Current first-pass behavior:
-- task title uses match quality and deal name
-- description includes AE, score, industry, location, ask, cash flow, and listing URL
+The task title uses match quality and deal name. The description includes AE, score, industry, location, ask, cash flow, listing URL, and the DFM delivery marker.
 
 ### 8. Delivery receipt is inserted
 
@@ -396,11 +409,17 @@ The worker writes the ClickUp task id and response payload to `clickup_delivery_
 
 Safeguard:
 - append-only receipt layer preserves delivery evidence
+- a controlled operator reconciliation can verify an existing task by list and exact title before writing its receipt
 
 ### 9. Job is marked `sent`
 
 Safeguard:
 - delivery state is explicit and queryable
+
+ClickUp requests are bounded to 8 seconds, rate-limit retries are capped, and
+numeric custom-field updates run concurrently. The cron route limits each
+invocation to two jobs so a slow provider call cannot consume the entire
+60-second runtime window.
 
 ## Failure Handling
 
@@ -443,6 +462,7 @@ If a workflow step throws:
 |---|---|
 | Cron routes | `CRON_SECRET` bearer auth |
 | Internal routes | `DFM_INTERNAL_SECRET` bearer auth |
+| Tend packet route | `DFM_TEND_READ_TOKEN` bearer auth, read only |
 | Event intake | `DFM_EVENT_SECRET` header check |
 
 ### Data Safeguards
@@ -470,7 +490,7 @@ If a workflow step throws:
 ## Cost-Conscious Deployment Path
 
 - Keep the app on Vercel
-- Keep the existing shared Supabase Postgres database as the managed Postgres layer
+- Keep the dedicated Neon free-tier resource as the DFM managed Postgres layer
 - Do not add another database vendor unless the shared database becomes an operational problem
 - Do not use Google Drive as the operational store for cursors, jobs, or receipts
 
@@ -478,7 +498,7 @@ If a workflow step throws:
 
 | Name | Description |
 |---|---|
-| Standalone Vercel env is incomplete | Unattended runtime still needs complete standalone secrets, especially a working managed Postgres connection such as `DIRECT_URL` |
+| Standalone Vercel env is incomplete | Unattended runtime still needs complete standalone secrets, especially a working dedicated `DFM_DATABASE_URL` connection |
 | Google OAuth uses local file paths today | Vercel cannot use local Mac file paths for unattended token access |
 | ClickUp custom-field mapping is not implemented | Task body is first-pass only |
 | New AE deliveries are no longer immediate | New AE matches created outside the daily run will be delivered by the next daily run |

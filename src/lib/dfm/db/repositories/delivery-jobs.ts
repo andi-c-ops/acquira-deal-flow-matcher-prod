@@ -10,6 +10,12 @@ export interface InsertDeliveryJobInput {
   dedupeKey: string;
 }
 
+export interface ClaimDeliveryJobsInput {
+  workerId: string;
+  limit: number;
+  staleAfterSeconds: number;
+}
+
 export async function insertDeliveryJob(input: InsertDeliveryJobInput) {
   return queryOne(
     `
@@ -113,6 +119,64 @@ export async function listPendingDeliveryJobs(limit: number) {
       limit $1
     `,
     [limit],
+  );
+}
+
+/**
+ * Claim a bounded batch without allowing two workers to process the same job.
+ * Processing claims older than the stale cutoff are eligible for recovery.
+ * Jobs remain receipt-gated: a recovered claim must still find or create one
+ * idempotent ClickUp task and write its receipt before the job can be sent.
+ */
+export async function claimDeliveryJobs(input: ClaimDeliveryJobsInput) {
+  return queryMany(
+    `
+      with candidates as (
+        select jobs.*
+        from dfm_private.clickup_delivery_jobs jobs
+        join dfm_private.match_runs runs on runs.id = jobs.run_id
+        where runs.run_type = 'daily'
+          and (
+            (
+              jobs.status in ('pending', 'retry_scheduled')
+              and jobs.next_attempt_at <= now()
+            )
+            or (
+              jobs.status = 'processing'
+              and jobs.claimed_at is not null
+              and jobs.claimed_at <= now() - ($2::int * interval '1 second')
+            )
+          )
+        order by jobs.created_at asc
+        limit $3
+        for update skip locked
+      ),
+      claimed as (
+        update dfm_private.clickup_delivery_jobs jobs
+        set
+          status = 'processing'::dfm_private.job_status,
+          claimed_by = $1,
+          claimed_at = now(),
+          next_attempt_at = now(),
+          last_error = case
+            when jobs.status = 'processing' then
+              concat(
+                'Reclaimed stale ClickUp delivery claim from ',
+                coalesce(jobs.claimed_by, 'unknown worker')
+              )
+            else jobs.last_error
+          end,
+          attempt_count = jobs.attempt_count + 1
+        from candidates
+        where jobs.id = candidates.id
+        returning jobs.*
+      )
+      select claimed.*, candidates.status as previous_status
+      from claimed
+      join candidates on candidates.id = claimed.id
+      order by claimed.created_at asc
+    `,
+    [input.workerId, input.staleAfterSeconds, input.limit],
   );
 }
 

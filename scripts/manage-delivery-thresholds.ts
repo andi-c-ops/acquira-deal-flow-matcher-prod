@@ -3,14 +3,12 @@ import { resolve } from "node:path";
 
 import { Pool } from "pg";
 
+import { getDedicatedDfmDatabaseUrl } from "@/lib/dfm/config/dedicated-database";
 import type { DeliveryMinMatchQuality } from "@/lib/dfm/matching/delivery-threshold";
 import { normalizeDeliveryMinMatchQuality } from "@/lib/dfm/matching/delivery-threshold";
 
 type Action = "list" | "set";
 type ListMode = "exceptions" | "all";
-
-const DEFAULT_ENV_FILE =
-  "/Users/andicunanan/Documents/CompanyOS/empowerlabs-ccworkspace/config/acquira-crm.env.local";
 
 type AeThesisRow = {
   id: string;
@@ -23,11 +21,15 @@ type AeThesisRow = {
 let pool: Pool | null = null;
 
 function loadEnvFileIfNeeded() {
-  if (process.env.DATABASE_URL || process.env.DIRECT_URL || process.env.SUPABASE_DB_URL) {
+  if (process.env.DFM_DATABASE_URL) {
     return;
   }
 
-  const envFile = process.env.DFM_ENV_FILE ?? DEFAULT_ENV_FILE;
+  const envFile = process.env.DFM_ENV_FILE;
+  if (!envFile) {
+    return;
+  }
+
   const resolvedPath = resolve(envFile);
   if (!existsSync(resolvedPath)) {
     return;
@@ -58,18 +60,7 @@ function loadEnvFileIfNeeded() {
 
 function getDatabaseUrl() {
   loadEnvFileIfNeeded();
-  const databaseUrl = process.env.DATABASE_URL ?? process.env.DIRECT_URL ?? process.env.SUPABASE_DB_URL;
-  if (!databaseUrl) {
-    throw new Error(
-      "Missing database connection. Set DIRECT_URL, DATABASE_URL, SUPABASE_DB_URL, or DFM_ENV_FILE.",
-    );
-  }
-
-  const parsed = new URL(databaseUrl);
-  if (parsed.searchParams.get("sslmode") === "require") {
-    parsed.searchParams.set("sslmode", "no-verify");
-  }
-  return parsed.toString();
+  return getDedicatedDfmDatabaseUrl(process.env);
 }
 
 function getPool() {

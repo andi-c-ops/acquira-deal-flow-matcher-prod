@@ -446,7 +446,10 @@ function buildCoverageReview(input: {
       observedAt: newestSnapshotAt,
       expectedRefresh: "Every 6 hours by the scheduled ClickUp engagement snapshot.",
     },
-    flaggedAes: flaggedAes.slice(0, 12),
+    // Expose every flagged AE so the displayed review queue reconciles with
+    // underservedAeCount. The packet is read-only, so completeness is safer
+    // than silently hiding the tail of the queue.
+    flaggedAes,
   };
 }
 

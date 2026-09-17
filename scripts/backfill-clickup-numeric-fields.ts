@@ -1,5 +1,7 @@
 import { Client } from "pg";
 
+import { getDedicatedDfmDatabaseUrl } from "@/lib/dfm/config/dedicated-database";
+
 const DEAL_CUSTOM_FIELD_IDS = {
   cashFlow: "98f50a47-2c8f-4a29-a186-b39a2e79b639",
   purchasePrice: "4add9c5e-c695-4512-a295-1aa166dec9df",
@@ -53,17 +55,7 @@ function readNonNegativeIntEnv(name: string, defaultValue: number) {
 }
 
 function getDatabaseUrl() {
-  const databaseUrl = process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? null;
-  if (!databaseUrl) {
-    throw new Error("DIRECT_URL or DATABASE_URL is required");
-  }
-
-  const parsed = new URL(databaseUrl);
-  if (parsed.searchParams.get("sslmode") === "require") {
-    parsed.searchParams.set("sslmode", "no-verify");
-  }
-
-  return parsed.toString();
+  return getDedicatedDfmDatabaseUrl(process.env);
 }
 
 function getRequiredEnv(name: string) {

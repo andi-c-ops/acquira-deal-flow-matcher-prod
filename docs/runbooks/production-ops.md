@@ -17,7 +17,7 @@ That runbook is the current operator-facing starting point for:
 
 Use this repo document for production-specific deployment and runtime notes after the operator runbook.
 
-This service is production-backed by Vercel, Supabase, Airtable, ClickUp, Google Sheets, and Gmail/Gmail OAuth.
+This service is production-backed by Vercel, Neon, Airtable, ClickUp, Google Sheets, and Gmail/Gmail OAuth. It is separate from Acquira CRM.
 
 ## Source Control and Deployment
 
@@ -47,11 +47,24 @@ Do not commit local secrets or generated artifacts. The repo ignores `.env.produ
 
 In other words, GitHub is now the source of truth for code, and Vercel should receive production changes from GitHub instead of one-off local deploys.
 
+## Read-Only Airtable Credential Probe
+
+The protected `GET /api/dfm/internal/airtable-probe` route is the safe way to
+check the Production Airtable credential before considering a rotation. It
+requires the `DFM_INTERNAL_SECRET` bearer credential, makes one request for at
+most one Airtable row, discards the response body, and returns only a redacted
+status such as `authenticated`, `unauthorized`, or `unreachable`.
+
+The probe does not create or update a Deal Flow Matcher run, touch Neon DFM state,
+advance the Airtable cursor, enqueue or deliver ClickUp work, or send email.
+Do not substitute the daily, backlog-recovery, or replay routes for this check;
+those routes perform workflow work and write operational state.
+
 ## Cron Behavior
 
 - `daily`: 9:30 AM Eastern year-round via dual UTC cron entries and route gating
 - `new-ae-check`: 7:00 AM Eastern year-round via dual UTC cron entries and route gating
-- `clickup-delivery`: minute-level ClickUp delivery worker
+- `clickup-delivery`: minute-level ClickUp delivery worker with bounded batches and stale-claim recovery
 - `clickup-engagement-snapshot`: every six hours, refreshes the private Google Drive JSON used only for AE Deal Flow Agent ClickUp activity signals
 - `backlog-recovery`: every 5 minutes, but inactive unless `DFM_BACKLOG_RECOVERY_ENABLED=true`
 - `reconcile`: removed from the normal runtime path
@@ -73,7 +86,7 @@ How it works:
 3. If `DFM_BACKLOG_RECOVERY_ENABLED` is not `true`, it exits without doing work.
 4. It finalizes any completed partial daily runs first.
 5. If any daily run is still open, it exits and waits for the next cron.
-6. It reads the `airtable_daily_deals` cursor from Supabase.
+6. It reads the `airtable_daily_deals` cursor from the dedicated Neon DFM database.
 7. It probes ahead for Airtable deals, skips empty windows, and shrinks dense windows to a safe size.
 8. It creates deferred ClickUp delivery jobs.
 9. The existing `clickup-delivery` cron drains those jobs.
@@ -115,7 +128,7 @@ Safety notes:
 ## Production Guardrails
 
 - The Airtable cursor advances only after required ClickUp delivery succeeds.
-- ClickUp delivery uses idempotent dedupe keys and receipts to avoid duplicate tasks.
+- ClickUp delivery uses idempotent dedupe keys, receipts, and a DFM delivery marker in each generated task description to avoid duplicate tasks after a retry.
 - Failed daily runs should send an error email and leave the cursor unchanged.
 - There is no automatic 90-day untouched-deal deletion in ClickUp or Airtable.
 - Any stale-deal cleanup should begin as a read-only review or archive proposal, not a delete action.
@@ -129,12 +142,26 @@ Current Strong-only exception:
 |---|---|
 | Nephtalie pierre | Send only Strong matches to ClickUp |
 
+## Guarded ClickUp Reconciliation
+
+When a delivery job is stuck in `processing` and an operator-created task already exists, do not reset the job and let the normal worker create another task. Use the protected `/dfm/operator/reconcile` page and provide the exact processing job ID and existing ClickUp task ID.
+
+The reconciliation route checks all of the following before writing a receipt:
+
+- the job still has no receipt and is still `processing`
+- the ClickUp task is in the job's configured list
+- the task title matches the expected match quality and deal name
+
+Only after those checks pass does it write an append-only receipt, mark that one job `sent`, and run the normal daily finalizer. If the checks fail, no task or job state is changed. The receipt records that the task was reconciled by an operator rather than created by the worker.
+
+In other words, recovery reuses one explicitly identified task only when its list and title prove it belongs to the stuck job. An uncertain match stays open instead of creating a duplicate or inventing evidence.
+
 ## ClickUp Engagement Snapshot
 
-The weekly AE Deal Flow Agent reads recent ClickUp Deals-list activity from the existing private Supabase `sync_cursors` store under the dedicated key `clickup_engagement_snapshot_v1`. This monitoring record does not participate in daily matching, ClickUp delivery, job dedupe, receipts, run logs, or Airtable cursor advancement.
+The weekly AE Deal Flow Agent reads recent ClickUp Deals-list activity from the dedicated Neon `sync_cursors` store under the key `clickup_engagement_snapshot_v1`. This monitoring record does not participate in daily matching, ClickUp delivery, job dedupe, receipts, run logs, or Airtable cursor advancement.
 
 The six-hour snapshot refresh uses the same production database connection as the rest of the Deal Flow Matcher. It requires no Google Drive credential, personal Google authorization, or 1Password access. No additional Vercel environment variable is required.
 
 If the snapshot record is absent, malformed, stale, or temporarily unreadable, the operator packet remains available and labels ClickUp engagement as unknown. It must never infer inactivity from a missing snapshot.
 
-To put it another way, the snapshot is runtime monitoring state stored beside the workflow's existing private data. Supabase remains the authoritative persistence layer, and the agent no longer needs a separate Google credential path.
+To put it another way, the snapshot is runtime monitoring state stored beside the workflow's existing private data in Neon, and the agent no longer needs a separate Google credential path.
